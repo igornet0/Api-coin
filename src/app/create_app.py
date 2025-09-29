@@ -1,0 +1,107 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+
+
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
+from fastapi.responses import JSONResponse
+from starlette.responses import HTMLResponse
+
+from .configuration.server import Server
+
+import logging
+
+logger = logging.getLogger("app_fastapi")
+
+
+def register_static_docs_routes(app: FastAPI) -> None:
+
+    @app.get("/docs", include_in_schema=False)
+    async def custom_swagger_ui_html() -> HTMLResponse:
+        return get_swagger_ui_html(
+            openapi_url=str(app.openapi_url),
+            title=app.title + " - Swagger UI",
+            oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+            swagger_js_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
+            swagger_css_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css",
+        )
+
+    @app.get(str(app.swagger_ui_oauth2_redirect_url), include_in_schema=False)
+    async def swagger_ui_redirect() -> HTMLResponse:
+        return get_swagger_ui_oauth2_redirect_html()
+
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc_html() -> HTMLResponse:
+        return get_redoc_html(
+            openapi_url=str(app.openapi_url),
+            title=app.title + " - ReDoc",
+            redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
+        )
+
+
+def create_app(
+    create_custom_static_urls: bool = False,
+) -> FastAPI:
+    
+    app = FastAPI(
+        title="Coin API Server", version="1.0.0",
+        description="API сервер для работы с биржей и сохранения данных в БД",
+        default_response_class=JSONResponse,
+        docs_url=None if create_custom_static_urls else "/docs",
+        redoc_url=None if create_custom_static_urls else "/redoc",
+    )
+    # Legacy static site removed; marketing frontend is now served by React Vite
+
+    if create_custom_static_urls:
+        register_static_docs_routes(app)
+
+    logger.info("App created")
+
+    return Server(app).get_app()
+
+
+# def create_app() -> FastAPI:
+#     """Создание и настройка FastAPI приложения"""
+    
+#     app = FastAPI(
+#         description="API сервер для работы с биржей KuCoin и сохранения данных в БД",
+#         version="1.0.0",
+#         lifespan=lifespan
+#     )
+    
+#     # Настройка CORS
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=["*"],  # В продакшене лучше указать конкретные домены
+#         allow_credentials=True,
+#         allow_methods=["*"],
+#         allow_headers=["*"],
+#     )
+    
+#     # Подключение роутеров
+#     from app.routers import market, coins, websocket
+#     app.include_router(market.router, prefix="/api/v1/market", tags=["market"])
+#     app.include_router(coins.router, prefix="/api/v1/coins", tags=["coins"])
+#     app.include_router(websocket.router, prefix="/api/v1/ws", tags=["websocket"])
+    
+#     @app.get("/")
+#     async def root():
+#         return {
+#             "message": "KuCoin API Server",
+#             "version": "1.0.0",
+#             "docs": "/docs"
+#         }
+    
+#     @app.get("/health")
+#     async def health_check():
+#         return {"status": "healthy"}
+    
+#     return app
