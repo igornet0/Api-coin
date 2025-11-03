@@ -1,92 +1,70 @@
 from typing import Literal
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
 
 import logging
 
-from .base import LOG_DEFAULT_FORMAT
+LOG_DEFAULT_FORMAT = '[%(asctime)s] %(name)-35s:%(lineno)-3d - %(levelname)-7s - %(message)s'
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+class AppBaseConfig:
+    """Базовый класс для конфигурации с общими настройками"""
+    case_sensitive = False
+    env_file = "./settings/prod.env"
+    env_file_encoding = "utf-8"
+    env_nested_delimiter="__"
+    extra = "ignore"
 
 
 class LoggingConfig(BaseSettings):
-
-    model_config = SettingsConfigDict(env_prefix="LOGGING__", extra="ignore")
-
+    
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="LOGGING__")
+    
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
     format: str = LOG_DEFAULT_FORMAT
     
     access_log: bool = Field(default=True)
 
     @property
-    def log_level(self) -> str:
+    def log_level(self) -> int:
         return getattr(logging, self.level)
+    
+
+class TelegramConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="TG__")
+    api_id: str = Field(default=...)
+    api_hash: str = Field(default=...)
+    phone: str = Field(default=...)
 
 
-class AppConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="APP__", extra="ignore")
+class ConfigParserDriver(BaseSettings):
 
-    host: str = Field(default="0.0.0.0")
-    port: int = Field(default=8000)
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="DRIVER__")
+    
+    url_parsing: str = Field(default=...)
 
-    frontend_host: str = Field(default="localhost")
-    frontend_port: int = Field(default=3000)
-    frontend_protocol: str = Field(default="http")
+    show_browser: bool = Field(default=True)
+    window_size_w: int = Field(default=780)
+    window_size_h: int = Field(default=700)
 
     @property
-    def frontend_url(self) -> str:
-        return f"{self.frontend_protocol}://{self.frontend_host}:{self.frontend_port}"
-
-    @property
-    def allowed_origins_urls(self) -> list[str]:
-        return [f"http://{self.host}:{self.port}",
-                f"https://{self.host}:{self.port}",
-                self.frontend_url,
-                ]
-
-
-class SecurityCongig(BaseSettings):
+    def window_size(self) -> tuple[int]:
+        return self.window_size_w, self.window_size_h
     
-    model_config = SettingsConfigDict(env_prefix="SECURITY__", extra="ignore")
-
-    private_key_path: Path = BASE_DIR / "ssl" / "privkey.pem"
-    public_key_path: Path = BASE_DIR / "ssl" / "pubkey.pem"
-    certificate_path: Path = BASE_DIR / "ssl" / "certificate.pem"
-
-    secret_key: str = Field(default=...)
-    refresh_secret_key: str = Field(default=...)
-    algorithm: str = Field(default="HS256")
-    refresh_algorithm: str = Field(default="HS256")
-
-    access_token_expire_minutes: int = Field(default=120)
-    refresh_token_expire_days:int = Field(default=7)
-
-
-class KucoinConfig(BaseSettings):
-
-    model_config = SettingsConfigDict(env_prefix="KUCOIN__", extra="ignore")
-
-    api_key: str = Field(default="")
-    api_secret: str = Field(default="")
-    api_passphrase: str = Field(default="")
-    
-    @field_validator('api_key', 'api_secret', 'api_passphrase')
-    @classmethod
-    def validate_kucoin_credentials(cls, v):
-        """Валидация обязательных параметров KuCoin API"""
-        if not v:
-            import warnings
-            warnings.warn("KuCoin API credentials are empty", UserWarning)
-        return v
+    def get_url(self, coin: str) -> str:
+        return self.url_parsing.replace("{coin}", coin)
     
 
 class ConfigDatabase(BaseSettings):
 
-    model_config = SettingsConfigDict(env_prefix="DATABASE__", extra="ignore")
-
-    user: str = Field(default="")
-    password: str = Field(default="")
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="DATABASE__")
+    
+    user: str = Field(default=...)
+    password: str = Field(default=...)
     host: str = Field(default="localhost")
     db_name: str = Field(default="db_name")
     port: int = Field(default=5432)
@@ -96,33 +74,8 @@ class ConfigDatabase(BaseSettings):
     pool_size: int = Field(default=20)
     max_overflow: int = 50
     pool_timeout: int = 5
-    
-    @field_validator('user', 'password')
-    @classmethod
-    def validate_db_credentials(cls, v):
-        """Валидация обязательных параметров подключения к БД"""
-        if not v:
-            import warnings
-            warnings.warn("Database credentials are empty", UserWarning)
-        return v
-    
-    @field_validator('port')
-    @classmethod
-    def validate_port(cls, v):
-        """Валидация порта базы данных"""
-        if not (1 <= v <= 65535):
-            raise ValueError("Port must be between 1 and 65535")
-        return v
-    
-    @field_validator('pool_size')
-    @classmethod
-    def validate_pool_size(cls, v):
-        """Валидация размера пула подключений"""
-        if v < 1:
-            raise ValueError("Pool size must be at least 1")
-        return v
 
-    naming_convention: dict = {
+    naming_convention: dict[str, str] = {
         "ix": "ix_%(column_0_label)s",
         "uq": "uq_%(table_name)s_%(column_0_N_name)s",
         "ck": "ck_%(table_name)s_%(constraint_name)s",
@@ -132,20 +85,84 @@ class ConfigDatabase(BaseSettings):
     
     def get_url(self) -> str:
         return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
+
+
+class KucoinConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="KUCOIN__")
     
+    api_key: str = Field(default=...)
+    api_secret: str = Field(default=...)
+    api_passphrase: str = Field(default=...)
+
+
+class CoindeskConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="COINDESK__")
+    
+    api_key: str = Field(default=...)
+
+
+class AppConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="APP__")
+    
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    reload: bool = Field(default=False)
+    workers: int = Field(default=1)
+    timeout: int = Field(default=30)
+    limit_concurrency: int = Field(default=10)
+    limit_max_requests: int = Field(default=1000)
+    limit_max_requests_jitter: int = Field(default=100)
+    limit_max_requests_jitter_backoff: int = Field(default=100)
+    limit_max_requests_jitter_backoff_factor: int = Field(default=100)
+
+class RabbitmqConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="RABBITMQ__")
+    
+    host: str = Field(default=...)
+    user: str = Field(default=...)
+    password: str = Field(default=...)
+    port: int = Field(default=5672)
+
     @property
-    def url(self) -> str:
-        """URL для подключения к базе данных"""
-        return self.get_url()
+    def broker_url(self) -> str:
+        return f"amqp://{self.user}:{self.password}@{self.host}:{self.port}//"
 
+class RedisConfig(BaseSettings):
 
-class Settings(BaseSettings):
+    model_config = SettingsConfigDict(**AppBaseConfig.__dict__, 
+                                      env_prefix="REDIS__")
     
-    debug: bool = Field(default=True)
-    app: AppConfig = Field(default_factory=AppConfig)
-    security: SecurityCongig = Field(default_factory=SecurityCongig)
-    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    host: str = Field(default=...)
+    port: int = Field(default=6379)
+
+    @property
+    def backend_url(self) -> str:
+        return f"redis://{self.host}:{self.port}/0"
+
+class ConfigParser(BaseSettings):
+
+    model_config = SettingsConfigDict(
+        **AppBaseConfig.__dict__,
+    )
+
     kucoin: KucoinConfig = Field(default_factory=KucoinConfig)
-    database: ConfigDatabase = Field(default_factory=ConfigDatabase)
 
-    
+    app: AppConfig = Field(default_factory=AppConfig)
+    rabbitmq: RabbitmqConfig = Field(default_factory=RabbitmqConfig)
+    redis: RedisConfig = Field(default_factory=RedisConfig)
+
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    driver: ConfigParserDriver = Field(default_factory=ConfigParserDriver)
+    database: ConfigDatabase = Field(default_factory=ConfigDatabase)
+    tg: TelegramConfig = Field(default_factory=TelegramConfig)
+    coindesk: CoindeskConfig = Field(default_factory=CoindeskConfig)
+
+settings = ConfigParser()

@@ -1,0 +1,84 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+logs/
+
+# Data files (опционально, можно исключить для ускорения сборки)
+data/*.csv
+data/*.json
+data/raw/
+data/processed/
+data/cached/
+data/backup/
+data/trach/
+data/log/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Documentation (сохраняем README.md если нужно)
+docs/
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+docker/
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Misc
+session.session
+*.pyc
+
+# Pip cache (не нужен в образе)
+/tmp/pip_cache/
+pip_cache/
+
+# Docker build artifacts
+*.tar
+*.tar.gz
+*.tar.bz2
+app_image_*.tar
+partial_build.tar.gz
+

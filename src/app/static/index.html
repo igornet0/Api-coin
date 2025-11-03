@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KuCoin Parser - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🪙 KuCoin Parser Dashboard</h1>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="refreshAll()">🔄 Обновить</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="showTab('coins')">Монеты</button>
+            <button class="tab-btn" onclick="showTab('news')">Новости</button>
+            <button class="tab-btn" onclick="showTab('parsing')">Парсинг</button>
+        </nav>
+
+        <!-- Coins Tab -->
+        <div id="coins-tab" class="tab-content active">
+            <div class="section-header">
+                <h2>Список монет</h2>
+                <div class="filter-controls">
+                    <label>
+                        <input type="checkbox" id="filter-parsed" onchange="loadCoins()">
+                        Только активные
+                    </label>
+                    <button class="btn btn-secondary" onclick="showAddCoinModal()">➕ Добавить монету</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('csv-upload-input').click()">📁 Загрузить CSV</button>
+                    <input type="file" id="csv-upload-input" accept=".csv" style="display: none;" onchange="uploadCoinsCSV(event)">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="coins-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Название</th>
+                            <th>Цена</th>
+                            <th>Макс.</th>
+                            <th>Мин.</th>
+                            <th>Открытие</th>
+                            <th>Объем</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="coins-tbody">
+                        <tr>
+                            <td colspan="9" class="loading">Загрузка...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Modal для добавления монеты -->
+            <div id="add-coin-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('add-coin-modal')">&times;</span>
+                    <h2>Добавить монету</h2>
+                    <form id="add-coin-form" onsubmit="addCoin(event)">
+                        <div class="form-group">
+                            <label for="coin-name">Название монеты:</label>
+                            <input type="text" id="coin-name" required placeholder="BTC, ETH, SOL...">
+                        </div>
+                        <div class="form-group">
+                            <label for="coin-price">Начальная цена (опционально):</label>
+                            <input type="number" id="coin-price" step="0.00000001" value="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="coin-parsed" checked>
+                                Активна для парсинга
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Добавить</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('add-coin-modal')">Отмена</button>
+                    </form>
+                </div>
+            </div>
+
+            <div id="coin-details" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('coin-details')">&times;</span>
+                    <h2>Детали монеты</h2>
+                    <div id="coin-details-content"></div>
+                    <div id="timeseries-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- News Tab -->
+        <div id="news-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Новости</h2>
+                <div class="filter-controls">
+                    <select id="news-type-filter" onchange="loadNews()">
+                        <option value="">Все типы</option>
+                        <option value="news">Новости</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="url">URL</option>
+                    </select>
+                    <input type="number" id="news-limit" value="50" min="1" max="200" placeholder="Лимит">
+                    <button class="btn btn-secondary" onclick="loadNews()">Применить</button>
+                </div>
+            </div>
+            <div id="news-container" class="news-container">
+                <div class="loading">Загрузка новостей...</div>
+            </div>
+        </div>
+
+        <!-- Parsing Tab -->
+        <div id="parsing-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Управление парсингом</h2>
+            </div>
+            
+            <div class="parsing-form">
+                <h3>Запустить парсинг</h3>
+                <form id="parsing-form" onsubmit="startParsing(event)">
+                    <div class="form-group">
+                        <label for="parser-type">Тип парсера:</label>
+                        <select id="parser-type" required>
+                            <option value="kucoin_api">KuCoin API</option>
+                            <option value="kucoin_driver">KuCoin Driver</option>
+                            <option value="news_api">News API</option>
+                            <option value="telegram_api">Telegram API</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="count">Количество:</label>
+                            <input type="number" id="count" value="100" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="time-parser">Интервал:</label>
+                            <select id="time-parser">
+                                <option value="1m">1 минута</option>
+                                <option value="5m" selected>5 минут</option>
+                                <option value="15m">15 минут</option>
+                                <option value="1h">1 час</option>
+                                <option value="4h">4 часа</option>
+                                <option value="1d">1 день</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pause">Пауза (мин):</label>
+                            <input type="number" id="pause" value="60" min="1" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="save">
+                                Сохранить данные
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="miss">
+                                Парсить пропущенные данные
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="last-launch">
+                                Использовать последний запуск
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="clear">
+                                Очистить датасет
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="save-type">Тип сохранения:</label>
+                        <select id="save-type">
+                            <option value="raw">Raw</option>
+                            <option value="processed">Processed</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="manual-stop" onchange="toggleCountField()">
+                            Режим парсинга до ручной остановки (игнорирует количество)
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="coins-select">Выбрать монеты (оставьте пустым для всех активных):</label>
+                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; background: var(--bg-color);">
+                            <div id="coins-checklist" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 5px;">
+                                <div class="loading">Загрузка монет...</div>
+                            </div>
+                        </div>
+                        <small style="color: var(--text-secondary);">Выберите монеты для парсинга или оставьте все пустым для парсинга всех активных монет</small>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">▶️ Запустить парсинг</button>
+                </form>
+            </div>
+
+            <div class="tasks-section">
+                <h3>Активные задачи</h3>
+                <div id="tasks-container">
+                    <div class="loading">Нет активных задач</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+

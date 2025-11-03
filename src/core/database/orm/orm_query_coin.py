@@ -1,141 +1,18 @@
 # файл для query запросов
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
 
-from core.database.models import (Coin, Timeseries, DataTimeseries)
-from core.database import get_db_helper
+from src.core.database.models import (Coin, Timeseries, DataTimeseries)
 
 class PriceData(BaseModel):
     price_now: float
     max_price_now: float
     min_price_now: float
     open_price_now: float
-    volume_now: float
-
-db_helper = get_db_helper()
-
-
-class CoinQuery:
-    """Класс для работы с запросами к базе данных монет"""
-    
-    async def get_coins(self, skip: int = 0, limit: int = 100, parsed_only: Optional[bool] = None) -> List[Coin]:
-        """Получить список монет с пагинацией"""
-        async with db_helper.get_session() as session:
-            query = select(Coin)
-            
-            if parsed_only is not None:
-                query = query.where(Coin.parsed == parsed_only)
-            
-            query = query.offset(skip).limit(limit)
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    async def get_coin_by_id(self, coin_id: int) -> Optional[Coin]:
-        """Получить монету по ID"""
-        async with db_helper.get_session() as session:
-            query = select(Coin).where(Coin.id == coin_id)
-            result = await session.execute(query)
-            return result.scalar()
-    
-    async def get_coin_by_name(self, name: str) -> Optional[Coin]:
-        """Получить монету по имени"""
-        async with db_helper.get_session() as session:
-            query = select(Coin).where(Coin.name == name)
-            result = await session.execute(query)
-            return result.scalar()
-    
-    async def get_or_create_coin(self, coin_data: Dict[str, Any]) -> Coin:
-        """Получить или создать монету"""
-        async with db_helper.get_session() as session:
-            # Проверяем, существует ли монета
-            existing_coin = await self.get_coin_by_name(coin_data["name"])
-            
-            if existing_coin:
-                # Обновляем существующую монету
-                for key, value in coin_data.items():
-                    if hasattr(existing_coin, key):
-                        setattr(existing_coin, key, value)
-                await session.commit()
-                await session.refresh(existing_coin)
-                return existing_coin
-            else:
-                # Создаем новую монету
-                new_coin = Coin(**coin_data)
-                session.add(new_coin)
-                await session.commit()
-                await session.refresh(new_coin)
-                return new_coin
-    
-    async def update_coin(self, coin_id: int, coin_data: Dict[str, Any]) -> Optional[Coin]:
-        """Обновить данные монеты"""
-        async with db_helper.get_session() as session:
-            coin = await self.get_coin_by_id(coin_id)
-            if not coin:
-                return None
-            
-            for key, value in coin_data.items():
-                if hasattr(coin, key):
-                    setattr(coin, key, value)
-            
-            await session.commit()
-            await session.refresh(coin)
-            return coin
-    
-    async def delete_coin(self, coin_id: int) -> bool:
-        """Удалить монету"""
-        async with db_helper.get_session() as session:
-            coin = await self.get_coin_by_id(coin_id)
-            if not coin:
-                return False
-            
-            await session.delete(coin)
-            await session.commit()
-            return True
-    
-    async def get_coin_timeseries(self, coin_id: int) -> List[Timeseries]:
-        """Получить временные ряды для монеты"""
-        async with db_helper.get_session() as session:
-            query = select(Timeseries).where(Timeseries.coin_id == coin_id)
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    async def create_timeseries(self, coin_id: int, timeseries_data: Dict[str, Any]) -> Timeseries:
-        """Создать временной ряд для монеты"""
-        async with db_helper.get_session() as session:
-            timeseries = Timeseries(coin_id=coin_id, **timeseries_data)
-            session.add(timeseries)
-            await session.commit()
-            await session.refresh(timeseries)
-            return timeseries
-    
-    async def get_coins_stats(self) -> Dict[str, Any]:
-        """Получить статистику по монетам"""
-        async with db_helper.get_session() as session:
-            # Общее количество монет
-            total_query = select(func.count(Coin.id))
-            total_result = await session.execute(total_query)
-            total_coins = total_result.scalar()
-            
-            # Количество активных монет
-            active_query = select(func.count(Coin.id)).where(Coin.parsed == True)
-            active_result = await session.execute(active_query)
-            active_coins = active_result.scalar()
-            
-            # Средняя цена
-            avg_price_query = select(func.avg(Coin.price_now)).where(Coin.price_now > 0)
-            avg_price_result = await session.execute(avg_price_query)
-            avg_price = avg_price_result.scalar() or 0
-            
-            return {
-                "total_coins": total_coins,
-                "active_coins": active_coins,
-                "inactive_coins": total_coins - active_coins,
-                "average_price": float(avg_price)
-            }
+    volume_now:float
 
 ##################### Добавляем монеты в БД #####################################
 
@@ -255,3 +132,29 @@ async def orm_add_data_timeseries(session: AsyncSession, timeseries_id: int, dat
     await session.commit()
 
     return True
+
+async def orm_get_all_data_timeseries_by_coin(session: AsyncSession, coin: Coin | str):
+    """
+    Получить все DataTimeseries для монеты через все её timeseries
+    """
+    if isinstance(coin, str):
+        coin = await orm_get_coin_by_name(session, coin)
+        
+    if not coin:
+        raise ValueError(f"Coin {coin} not found")
+    
+    # Получаем все timeseries для монеты
+    timeseries_list = await orm_get_timeseries_by_coin(session, coin)
+    
+    if not timeseries_list:
+        return []
+    
+    # Получаем все DataTimeseries для всех timeseries
+    timeseries_ids = [ts.id for ts in timeseries_list]
+    
+    query = select(DataTimeseries).where(
+        DataTimeseries.timeseries_id.in_(timeseries_ids)
+    ).order_by(DataTimeseries.datetime)
+    
+    result = await session.execute(query)
+    return result.scalars().all()

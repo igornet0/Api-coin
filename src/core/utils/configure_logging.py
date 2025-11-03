@@ -4,8 +4,8 @@ from typing import Literal
 from pydantic import BaseModel
 import sys
 
-from core.settings import settings
-from core import data_manager
+from src.core.settings import settings
+from src.core import data_manager
 
 logging.getLogger("selenium").setLevel(logging.WARNING)
 logging.getLogger("undetected_chromedriver").setLevel(logging.WARNING)

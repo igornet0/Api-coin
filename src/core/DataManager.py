@@ -1,4 +1,4 @@
-from core.utils.gui_deps import GUICheck
+from .utils.gui_deps import GUICheck
 
 # В файлах с GUI-логикой используйте:
 if GUICheck.has_gui_deps():
@@ -33,6 +33,7 @@ class SettingsTrade(BaseSettings):
     CACHED_DATA_PATH: Path = DATA_DIR / "cached"
     PROCESSED_DATA_PATH: Path = DATA_DIR / "processed"
     BACKUP_DATA_PATH: Path = DATA_DIR / "backup"
+    PARSING_CONFIG_PATH: Path = DATA_DIR / "parsing_config"
     TRACH_PATH: Path = DATA_DIR / "trach"
     LOG_PATH: Path = DATA_DIR / "log"
     
@@ -57,6 +58,7 @@ class DataManager:
             "cached": self.settings.CACHED_DATA_PATH,
             "backup": self.settings.BACKUP_DATA_PATH,
             "log": self.settings.LOG_PATH,
+            "parsing_config": self.settings.PARSING_CONFIG_PATH,
             "trach": self.settings.TRACH_PATH,
             }
 

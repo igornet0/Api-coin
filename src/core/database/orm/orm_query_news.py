@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
 from enum import Enum
-from core.database.models import (News, NewsUrl, TelegramChannel)
+from src.core.database.models import (News, NewsUrl, TelegramChannel)
 
 class NewsType(Enum):
     
@@ -49,7 +49,7 @@ async def orm_add_news_url(session: AsyncSession, url: str, a_pup: float = 0.9, 
                 a_pup=a_pup,
                 parsed=parsed)
 
-    session.add()
+    session.add(news)
     await session.commit()
 
     await session.refresh(news)
@@ -113,6 +113,18 @@ async def orm_get_news(session: AsyncSession, id: int = None, type: str = None, 
 
     result = await session.execute(query)
     return result.scalars().first()
+
+
+async def orm_get_news_list(session: AsyncSession, type: str = None, limit: int = 100, offset: int = 0) -> list[News]:
+    query = select(News)
+
+    if type:
+        query = query.where(News.type == type)
+
+    query = query.order_by(News.date.desc()).limit(limit).offset(offset)
+    
+    result = await session.execute(query)
+    return result.scalars().all()
 
 async def orm_add_news(session: AsyncSession, data: NewsData) -> News:
 

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from core.utils.gui_deps import GUICheck
+from src.core.utils.gui_deps import GUICheck
 
 if GUICheck.has_gui_deps():
     from sktime import utils
@@ -15,9 +15,9 @@ from typing import Union
 from os import walk, mkdir, path, getcwd
 import re
 
-from core import data_manager
-from core.utils.clear_datasets import *
-from core.utils.tesseract_img_text import RU_EN_timetravel
+from src.core import data_manager
+from src.core.utils.clear_datasets import *
+from src.core.utils.tesseract_img_text import RU_EN_timetravel
 
 import logging
 

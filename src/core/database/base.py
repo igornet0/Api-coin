@@ -1,10 +1,8 @@
 from sqlalchemy import MetaData, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
-from core.settings import get_settings
-from core.utils.case_converter import camel_case_to_snake_case
-
-settings = get_settings()
+from src.core.settings import settings
+from src.core.utils.case_converter import camel_case_to_snake_case
 
 # создаем базовый класс для всех остальных
 class Base(DeclarativeBase):
