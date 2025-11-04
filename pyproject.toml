@@ -26,6 +26,7 @@ emoji = "^2.14.1"
 fastapi = {extras = ["standard"], version = "^0.120.3"}
 celery = {extras = ["redis"], version = "^5.4.0"}
 kombu = "^5.4.0"
+uvicorn = "^0.38.0"
 
 [tool.poetry.group.gui.dependencies]
 sktime = ">=0.37.0,<0.38.0"
