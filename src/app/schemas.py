@@ -12,6 +12,7 @@ class CoinResponse(BaseModel):
     open_price_now: float
     volume_now: float
     parsed: bool
+    news_score_global: float
     created: datetime
     updated: datetime
 

@@ -18,6 +18,8 @@ class Coin(Base):
 
     parsed: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    news_score_global: Mapped[float] = mapped_column(Float, default=0)
+
     timeseries: Mapped[list['Timeseries']] = relationship(back_populates='coin')
     parsing_configs: Mapped[list['ParsingConfigCoin']] = relationship(back_populates='coin')
 
