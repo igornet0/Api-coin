@@ -40,16 +40,31 @@ build: ## Запустить все модули проекта без Docker
 		echo "${YELLOW}Виртуальное окружение не найдено. Установка зависимостей...${RESET}"; \
 		poetry install --no-root --without gui,dev; \
 	fi
+	@echo "${GREEN}Проверка импорта FastAPI приложения...${RESET}"
+	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -c "from app.main import app; print('✓ Импорт успешен')" 2>&1 || \
+		(echo "${RED}✗ Ошибка импорта приложения! Проверьте зависимости и конфигурацию.${RESET}"; \
+		echo "${YELLOW}Запустите для диагностики: make test-fastapi${RESET}"; exit 1)
 	@echo "${GREEN}Запуск FastAPI приложения...${RESET}"
-	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../logs/fastapi.log 2>&1 & \
-		echo $$! > ../$(PID_FILE); \
-		echo "FastAPI PID: $$!"
-	@sleep 3
-	@if ! kill -0 $$(head -1 $(PID_FILE) 2>/dev/null) 2>/dev/null; then \
-		echo "${RED}✗ FastAPI не запустился! Проверьте логи:${RESET}"; \
-		echo "${YELLOW}Последние строки из logs/fastapi.log:${RESET}"; \
-		tail -20 logs/fastapi.log 2>/dev/null || echo "Лог файл не найден"; \
-		exit 1; \
+	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 >> ../logs/fastapi.log 2>&1 & \
+		FASTAPI_PID=$$!; \
+		echo $$FASTAPI_PID > ../$(PID_FILE); \
+		echo "FastAPI PID: $$FASTAPI_PID"; \
+		sleep 1; \
+		if ! kill -0 $$FASTAPI_PID 2>/dev/null; then \
+			echo "${RED}✗ FastAPI процесс завершился сразу после запуска!${RESET}"; \
+			echo "${YELLOW}Ошибка из logs/fastapi.log:${RESET}"; \
+			cat ../logs/fastapi.log 2>/dev/null || echo "Лог файл пуст - возможно, процесс не успел записать ошибку"; \
+			exit 1; \
+		fi
+	@sleep 2
+	@FASTAPI_PID=$$(head -1 $(PID_FILE) 2>/dev/null); \
+	if [ -n "$$FASTAPI_PID" ]; then \
+		if ! kill -0 $$FASTAPI_PID 2>/dev/null; then \
+			echo "${RED}✗ FastAPI процесс завершился! Проверьте логи:${RESET}"; \
+			echo "${YELLOW}Последние строки из logs/fastapi.log:${RESET}"; \
+			tail -30 logs/fastapi.log 2>/dev/null || echo "Лог файл пуст"; \
+			exit 1; \
+		fi; \
 	fi
 	@if ! nc -z localhost 8000 >/dev/null 2>&1; then \
 		echo "${YELLOW}⚠ FastAPI процесс запущен, но порт 8000 не отвечает. Проверьте логи.${RESET}"; \
@@ -330,6 +345,13 @@ health: ## Проверить статус здоровья всех серви�
 	@curl -s -u guest:guest http://localhost:15672/api/overview | python -m json.tool 2>/dev/null || echo "${YELLOW}RabbitMQ not responding${RESET}"
 	@echo "\nPostgreSQL:"
 	@$(DOCKER_COMPOSE) exec postgres pg_isready -U postgres && echo "${GREEN}PostgreSQL is ready${RESET}" || echo "${YELLOW}PostgreSQL not ready${RESET}"
+
+test-fastapi: ## Тестовый запуск FastAPI для диагностики ошибок (не в фоне)
+	@echo "${GREEN}Тестовый запуск FastAPI (для диагностики)...${RESET}"
+	@echo "${YELLOW}Если вы увидите ошибку, она будет показана ниже:${RESET}"
+	@echo ""
+	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 || \
+		(echo ""; echo "${RED}✗ FastAPI не запустился. Проверьте ошибку выше.${RESET}"; exit 1)
 
 check-fastapi: ## Проверить статус FastAPI и показать логи при ошибке
 	@echo "${GREEN}Проверка статуса FastAPI...${RESET}"
