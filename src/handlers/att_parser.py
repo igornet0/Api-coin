@@ -343,6 +343,9 @@ class AttParser:
 
     async def add_buffer_dataTimeseries(self, coin: str, data: DatasetTimeseries, time_parser: str = "5m"):
 
+        logger.info(f"Add buffer data for coin: {coin}, time_parser: {time_parser}")
+        logger.info(f"Data: {len(data)}")
+
         self.buffer_data.setdefault(coin, {})
         self.buffer_data[coin].setdefault(time_parser, None)
 
@@ -696,6 +699,8 @@ class AttParser:
                                 result_queue, time_parser, count_cpu, *args):
         
         logger.info("Start parser - %s, count_cpu: %d", datetime.now(), count_cpu)
+        logger.info(f"Coins: {coins}")
+        logger.info(f"Time parser: {time_parser}")
         
         if isinstance(self.api, KuCoinAPI) and self.driver_lock:
 
