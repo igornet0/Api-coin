@@ -29,7 +29,7 @@ class Timeseries(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     coin_id: Mapped[int] = mapped_column(ForeignKey('coins.id'))  
     timestamp: Mapped[str] = mapped_column(String(50)) 
-    path_dataset: Mapped[str] = mapped_column(String(100), unique=True)
+    path_dataset: Mapped[str] = mapped_column(String(100))
 
     coin: Mapped['Coin'] = relationship(back_populates='timeseries')
 
