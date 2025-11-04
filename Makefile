@@ -38,13 +38,23 @@ build: ## Запустить все модули проекта без Docker
 	fi
 	@if [ ! -d "$$(poetry env info --path 2>/dev/null)" ]; then \
 		echo "${YELLOW}Виртуальное окружение не найдено. Установка зависимостей...${RESET}"; \
-		poetry install; \
+		poetry install --no-root --without gui,dev; \
 	fi
 	@echo "${GREEN}Запуск FastAPI приложения...${RESET}"
 	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../logs/fastapi.log 2>&1 & \
 		echo $$! > ../$(PID_FILE); \
 		echo "FastAPI PID: $$!"
-	@sleep 2
+	@sleep 3
+	@if ! kill -0 $$(head -1 $(PID_FILE) 2>/dev/null) 2>/dev/null; then \
+		echo "${RED}✗ FastAPI не запустился! Проверьте логи:${RESET}"; \
+		echo "${YELLOW}Последние строки из logs/fastapi.log:${RESET}"; \
+		tail -20 logs/fastapi.log 2>/dev/null || echo "Лог файл не найден"; \
+		exit 1; \
+	fi
+	@if ! nc -z localhost 8000 >/dev/null 2>&1; then \
+		echo "${YELLOW}⚠ FastAPI процесс запущен, но порт 8000 не отвечает. Проверьте логи.${RESET}"; \
+		tail -20 logs/fastapi.log 2>/dev/null || true; \
+	fi
 	@echo "${GREEN}Запуск Celery worker...${RESET}"
 	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run celery -A app.celery_app worker --loglevel=info --concurrency=4 > ../logs/celery.log 2>&1 & \
 		echo $$! >> ../$(PID_FILE); \
@@ -56,9 +66,15 @@ build: ## Запустить все модули проекта без Docker
 		echo "Celery Beat PID: $$!"
 	@sleep 1
 	@echo ""
-	@echo "${GREEN}✓ Все модули запущены!${RESET}"
-	@echo "${WHITE}FastAPI:${RESET} http://localhost:8000"
-	@echo "${WHITE}API Docs:${RESET} http://localhost:8000/docs"
+	@if nc -z localhost 8000 >/dev/null 2>&1; then \
+		echo "${GREEN}✓ Все модули запущены!${RESET}"; \
+		echo "${WHITE}FastAPI:${RESET} http://localhost:8000"; \
+		echo "${WHITE}API Docs:${RESET} http://localhost:8000/docs"; \
+	else \
+		echo "${RED}✗ FastAPI не отвечает на порту 8000${RESET}"; \
+		echo "${YELLOW}Проверьте логи для диагностики:${RESET}"; \
+		echo "${YELLOW}  tail -f logs/fastapi.log${RESET}"; \
+	fi
 	@echo "${WHITE}Логи:${RESET} logs/fastapi.log, logs/celery.log, logs/celery-beat.log"
 	@echo "${WHITE}PID файл:${RESET} $(PID_FILE)"
 	@echo "${YELLOW}Для остановки:${RESET} make stop-local"
@@ -314,6 +330,29 @@ health: ## Проверить статус здоровья всех серви�
 	@curl -s -u guest:guest http://localhost:15672/api/overview | python -m json.tool 2>/dev/null || echo "${YELLOW}RabbitMQ not responding${RESET}"
 	@echo "\nPostgreSQL:"
 	@$(DOCKER_COMPOSE) exec postgres pg_isready -U postgres && echo "${GREEN}PostgreSQL is ready${RESET}" || echo "${YELLOW}PostgreSQL not ready${RESET}"
+
+check-fastapi: ## Проверить статус FastAPI и показать логи при ошибке
+	@echo "${GREEN}Проверка статуса FastAPI...${RESET}"
+	@if [ -f $(PID_FILE) ]; then \
+		FASTAPI_PID=$$(head -1 $(PID_FILE) 2>/dev/null); \
+		if [ -n "$$FASTAPI_PID" ]; then \
+			if kill -0 $$FASTAPI_PID 2>/dev/null; then \
+				echo "${GREEN}✓ FastAPI процесс запущен (PID: $$FASTAPI_PID)${RESET}"; \
+			else \
+				echo "${RED}✗ FastAPI процесс не найден (PID: $$FASTAPI_PID)${RESET}"; \
+			fi; \
+		fi; \
+	else \
+		echo "${YELLOW}⚠ PID файл не найден${RESET}"; \
+	fi
+	@if nc -z localhost 8000 >/dev/null 2>&1; then \
+		echo "${GREEN}✓ Порт 8000 слушает${RESET}"; \
+		echo "${GREEN}✓ FastAPI доступен на http://localhost:8000${RESET}"; \
+	else \
+		echo "${RED}✗ Порт 8000 не отвечает${RESET}"; \
+		echo "${YELLOW}Последние строки из logs/fastapi.log:${RESET}"; \
+		tail -30 logs/fastapi.log 2>/dev/null || echo "Лог файл не найден"; \
+	fi
 
 stats: ## Показать статистику использования ресурсов
 	$(DOCKER_COMPOSE) stats
