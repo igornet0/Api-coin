@@ -1,15 +1,26 @@
 from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 import logging
 
 LOG_DEFAULT_FORMAT = '[%(asctime)s] %(name)-35s:%(lineno)-3d - %(levelname)-7s - %(message)s'
 
+# Определяем путь к файлу конфигурации относительно корня проекта
+# config.py находится в src/core/settings/, а prod.env в settings/
+_CONFIG_FILE = Path(__file__).parent.parent.parent.parent / "settings" / "prod.env"
+# Если файл не найден относительно config.py, пробуем относительно текущей директории
+if not _CONFIG_FILE.exists():
+    _CONFIG_FILE = Path("./settings/prod.env").resolve()
+    # Если и это не работает, пробуем ../settings/prod.env (для случая запуска из src/)
+    if not _CONFIG_FILE.exists():
+        _CONFIG_FILE = Path("../settings/prod.env").resolve()
+
 class AppBaseConfig:
     """Базовый класс для конфигурации с общими настройками"""
     case_sensitive = False
-    env_file = "./settings/prod.env"
+    env_file = str(_CONFIG_FILE)
     env_file_encoding = "utf-8"
     env_nested_delimiter="__"
     extra = "ignore"
