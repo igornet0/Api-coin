@@ -8,7 +8,7 @@ class NewsSettings:
 
 class TelegramSettings:
 
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
     FILE_TG_WORDS: Path = BASE_DIR / "settings" / "tg_words.json"
 
     def __init__(self):
