@@ -41,11 +41,11 @@ build: ## Запустить все модули проекта без Docker
 		poetry install --no-root --without gui,dev; \
 	fi
 	@echo "${GREEN}Проверка импорта FastAPI приложения...${RESET}"
-	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -c "from app.main import app; print('✓ Импорт успешен')" 2>&1 || \
+	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -c "from app import app; print('✓ Импорт успешен')" 2>&1 || \
 		(echo "${RED}✗ Ошибка импорта приложения! Проверьте зависимости и конфигурацию.${RESET}"; \
 		echo "${YELLOW}Запустите для диагностики: make test-fastapi${RESET}"; exit 1)
 	@echo "${GREEN}Запуск FastAPI приложения...${RESET}"
-	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 >> ../logs/fastapi.log 2>&1 & \
+	@cd $(WORKING_DIR) && PYTHONPATH=$(PYTHONPATH) poetry run python -m uvicorn app:app --host 0.0.0.0 --port 8000 >> ../logs/fastapi.log 2>&1 & \
 		FASTAPI_PID=$$!; \
 		echo $$FASTAPI_PID > ../$(PID_FILE); \
 		echo "FastAPI PID: $$FASTAPI_PID"; \
