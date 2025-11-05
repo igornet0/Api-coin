@@ -1,6 +1,7 @@
 # файл для query запросов
-from datetime import datetime
-from sqlalchemy import select, update, delete
+from typing import List, Literal, Optional, Dict, Any
+from datetime import datetime, timedelta
+from sqlalchemy import select, update, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
@@ -13,6 +14,276 @@ class PriceData(BaseModel):
     min_price_now: float
     open_price_now: float
     volume_now:float
+
+"""
+ORM запросы для работы с монетами и тикерами KuCoin
+"""
+
+from src.core.database import get_db_helper
+
+class CoinQuery:
+    """Класс для работы с запросами к таблице монет"""
+
+    @staticmethod
+    async def get_coin_by_id(coin_id: int) -> Optional[Coin]:
+        """Получить монету по ID"""
+        async with get_db_helper().get_session() as session:
+            query = select(Coin).where(Coin.id == coin_id)
+            result = await session.execute(query)
+            return result.scalar()
+
+    @staticmethod
+    async def get_coin_by_symbol(symbol: str, 
+                                 is_active: bool = None, 
+                                 parsed: bool = None, 
+                                 type_market: Literal["spot", "future"] = None) -> Optional[Coin]:
+        """Получить монету по символу (например, BTC-USDT)"""
+        async with get_db_helper().get_session() as session:
+            query = select(Coin).where(Coin.symbol == symbol)
+            if is_active:
+                query = query.where(Coin.is_active == is_active)
+            if parsed:
+                query = query.where(Coin.parsed == parsed)
+            if type_market:
+                query = query.where(Coin.type == type_market)
+            result = await session.execute(query)
+
+            return result.scalar()
+
+    @staticmethod
+    async def get_all_coins(limit: int = 100, offset: int = 0) -> List[Coin]:
+        """Получить все монеты с пагинацией"""
+        async with get_db_helper().get_session() as session:
+            query = select(Coin).where(Coin.is_active == True).offset(offset).limit(limit)
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_coins_by_symbols(symbols: List[str]) -> List[Coin]:
+        """Получить монеты по списку символов"""
+        async with get_db_helper().get_session() as session:
+            query = select(Coin).where(Coin.symbol.in_(symbols))
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def create_or_update_coin_from_ticker(ticker_data: Dict[str, Any]) -> Coin:
+        """
+        Создать или обновить монету из данных тикера KuCoin
+        
+        Args:
+            ticker_data: Данные тикера от KuCoin API
+            
+        Returns:
+            Coin: Обновленная или созданная монета
+        """
+        async with get_db_helper().get_session() as session:
+            symbol = ticker_data.get('symbol')
+            if not symbol:
+                raise ValueError("Symbol is required in ticker data")
+
+            # Проверяем, существует ли монета
+            print(f"{symbol=}")
+            existing_coin = await CoinQuery.get_coin_by_symbol(symbol)
+            print(ticker_data)
+            if existing_coin:
+                # Обновляем существующую монету
+                update_data = {
+                    'name': ticker_data.get('symbolName', symbol),
+                    'last_price': float(ticker_data.get('last', 0)),
+                    'buy_price': float(ticker_data.get('buy', 0)),
+                    'sell_price': float(ticker_data.get('sell', 0)),
+                    'volume': float(ticker_data.get('vol', 0)),
+                    'volume_value': float(ticker_data.get('volValue', 0)),
+                    'last_size': float(ticker_data.get('lastSize', 0)),
+                    'change_rate': float(ticker_data.get('changeRate', 0)),
+                    'change_price': float(ticker_data.get('changePrice', 0)),
+                    'open_price': float(ticker_data.get('open', 0)),
+                    'high_price': float(ticker_data.get('high', 0)),
+                    'low_price': float(ticker_data.get('low', 0)),
+                    'average_price': float(ticker_data.get('averagePrice', 0)),
+                    'best_bid_size': float(ticker_data.get('bestBidSize', 0)),
+                    'best_ask_size': float(ticker_data.get('bestAskSize', 0)),
+                    'taker_fee_rate': float(ticker_data.get('takerFeeRate', 0)),
+                    'maker_fee_rate': float(ticker_data.get('makerFeeRate', 0)),
+                    'last_updated': datetime.now(),
+                    'is_active': True,
+                    # Legacy fields для совместимости
+                    'price_now': float(ticker_data.get('last', 0)),
+                    'max_price_now': float(ticker_data.get('high', 0)),
+                    'min_price_now': float(ticker_data.get('low', 0)),
+                    'open_price_now': float(ticker_data.get('open', 0)),
+                    'volume_now': float(ticker_data.get('vol', 0)),
+                }
+                
+                query = update(Coin).where(Coin.id == existing_coin.id).values(**update_data)
+                await session.execute(query)
+                await session.commit()
+                await session.refresh(existing_coin)
+                return existing_coin
+            else:
+                # Создаем новую монету
+                new_coin = Coin(
+                    symbol=symbol,
+                    type=ticker_data.get('type', symbol),
+                    name=ticker_data.get('symbolName', symbol),
+                    last_price=float(ticker_data.get('last', 0)),
+                    buy_price=float(ticker_data.get('buy', 0)),
+                    sell_price=float(ticker_data.get('sell', 0)),
+                    volume=float(ticker_data.get('vol', 0)),
+                    volume_value=float(ticker_data.get('volValue', 0)),
+                    last_size=float(ticker_data.get('lastSize', 0)),
+                    change_rate=float(ticker_data.get('changeRate', 0)),
+                    change_price=float(ticker_data.get('changePrice', 0)),
+                    open_price=float(ticker_data.get('open', 0)),
+                    high_price=float(ticker_data.get('high', 0)),
+                    low_price=float(ticker_data.get('low', 0)),
+                    average_price=float(ticker_data.get('averagePrice', 0)),
+                    best_bid_size=float(ticker_data.get('bestBidSize', 0)),
+                    best_ask_size=float(ticker_data.get('bestAskSize', 0)),
+                    taker_fee_rate=float(ticker_data.get('takerFeeRate', 0)),
+                    maker_fee_rate=float(ticker_data.get('makerFeeRate', 0)),
+                    is_active=True,
+                    # Legacy fields для совместимости
+                    price_now=float(ticker_data.get('last', 0)),
+                    max_price_now=float(ticker_data.get('high', 0)),
+                    min_price_now=float(ticker_data.get('low', 0)),
+                    open_price_now=float(ticker_data.get('open', 0)),
+                    volume_now=float(ticker_data.get('vol', 0)),
+                    parsed=True
+                )
+                
+                session.add(new_coin)
+                await session.commit()
+                await session.refresh(new_coin)
+                return new_coin
+
+    @staticmethod
+    async def update_price_coin(coin_id: int, price: float) -> Coin:
+        """Обновить цену монеты"""
+        async with get_db_helper().get_session() as session:
+            query = update(Coin).where(Coin.id == coin_id).values(last_price=price)
+            await session.execute(query)
+            await session.commit()
+
+    @staticmethod
+    async def bulk_update_tickers(tickers_data: List[Dict[str, Any]]) -> List[Coin]:
+        """
+        Массовое обновление тикеров
+        
+        Args:
+            tickers_data: Список данных тикеров от KuCoin API
+            
+        Returns:
+            List[Coin]: Список обновленных монет
+        """
+        updated_coins = []
+        
+        for ticker_data in tickers_data:
+            try:
+                coin = await CoinQuery.create_or_update_coin_from_ticker(ticker_data)
+                updated_coins.append(coin)
+            except Exception as e:
+                # Логируем ошибку, но продолжаем обработку остальных
+                print(f"Error updating ticker {ticker_data.get('symbol', 'unknown')}: {e}")
+                continue
+        
+        return updated_coins
+    
+    @staticmethod
+    async def coins_add(coins: List, type_coins: str = "spot"):
+        async with get_db_helper().get_session() as session:
+            for coin in coins:
+                existing_coin = await CoinQuery.get_coin_by_symbol(coin.get('symbol'))
+                if existing_coin:
+                    continue
+                session.add(Coin(type=type_coins,
+                                 symbol=coin.get('symbol'),
+                                 name=coin.get('name', f"{type_coins}_{coin.get('symbol')}")
+                                 ))
+            
+                await session.commit()
+
+    @staticmethod
+    async def get_top_volume_coins(limit: int = 50) -> List[Coin]:
+        """Получить топ монет по объему торгов"""
+        async with get_db_helper().get_session() as session:
+            query = (
+                select(Coin)
+                .where(Coin.is_active == True)
+                .order_by(Coin.volume_value.desc())
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_top_gainers(limit: int = 50) -> List[Coin]:
+        """Получить топ монеты по росту цены"""
+        async with get_db_helper().get_session() as session:
+            query = (
+                select(Coin)
+                .where(Coin.is_active == True)
+                .order_by(Coin.change_rate.desc())
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_top_losers(limit: int = 50) -> List[Coin]:
+        """Получить топ монеты по падению цены"""
+        async with get_db_helper().get_session() as session:
+            query = (
+                select(Coin)
+                .where(Coin.is_active == True)
+                .order_by(Coin.change_rate.asc())
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def search_coins_by_symbol(search_term: str, limit: int = 20) -> List[Coin]:
+        """Поиск монет по символу"""
+        async with get_db_helper().get_session() as session:
+            query = (
+                select(Coin)
+                .where(
+                    Coin.is_active == True,
+                    Coin.symbol.ilike(f"%{search_term.upper()}%")
+                )
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def deactivate_old_coins(hours_threshold: int = 24) -> int:
+        """
+        Деактивировать монеты, которые не обновлялись более указанного времени
+        
+        Args:
+            hours_threshold: Количество часов без обновления
+            
+        Returns:
+            int: Количество деактивированных монет
+        """
+        async with get_db_helper().get_session() as session:
+
+            threshold_time = datetime.now() - timedelta(hours=hours_threshold)
+            
+            query = (
+                update(Coin)
+                .where(
+                    Coin.is_active == True,
+                    Coin.last_updated < threshold_time
+                )
+                .values(is_active=False)
+            )
+            result = await session.execute(query)
+            await session.commit()
+            return result.rowcount
 
 ##################### Добавляем монеты в БД #####################################
 

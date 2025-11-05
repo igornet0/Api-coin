@@ -1,10 +1,10 @@
-from src.core import settings
+from src.core import settings_app
 from celery import Celery
 
 celery_app = Celery(
     "parser_kucoin",
-    broker=settings.rabbitmq.broker_url,
-    backend=settings.redis.backend_url,
+    broker=settings_app.rabbitmq.broker_url,
+    backend=settings_app.redis.backend_url,
     include=["app.tasks"]
 )
 

@@ -1,7 +1,7 @@
 from sqlalchemy import MetaData, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
-from src.core.settings import settings
+from src.core.settings import settings_parser
 from src.core.utils.case_converter import camel_case_to_snake_case
 
 # создаем базовый класс для всех остальных
@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
     updated: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     metadata = MetaData(
-        naming_convention=settings.database.naming_convention,
+        naming_convention=settings_parser.database.naming_convention,
     )
 
     @declared_attr.directive

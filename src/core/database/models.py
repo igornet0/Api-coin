@@ -1,9 +1,37 @@
 # модели для БД
+from pyclbr import Class
+
 from sqlalchemy import (DateTime, ForeignKey, Float, String, 
                         BigInteger, Integer, Boolean, func, JSON)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+class User(Base):
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    login: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(50))
+    password: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(50), unique=True)
+
+    balance: Mapped[int] = mapped_column(Float, default=0)
+
+    role: Mapped[str] = mapped_column(String(50), default="user")
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_2fa_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    kucoin_api_keys: Mapped[list['KucoinApiKey']] = relationship(back_populates='user')
+    request_logs: Mapped[list['RequestLog']] = relationship(back_populates='user')
+    orders: Mapped[list['Order']] = relationship(back_populates='user')
+    portfolio: Mapped[list['Portfolio']] = relationship(back_populates='user')
+
 
 class Coin(Base):
 
@@ -21,7 +49,7 @@ class Coin(Base):
     news_score_global: Mapped[float] = mapped_column(Float, default=0)
 
     timeseries: Mapped[list['Timeseries']] = relationship(back_populates='coin')
-    parsing_configs: Mapped[list['ParsingConfigCoin']] = relationship(back_populates='coin')
+    portfolio: Mapped[list['Portfolio']] = relationship(back_populates='coin')
 
 
 class Timeseries(Base):
@@ -72,26 +100,79 @@ class News(Base):
     date: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
 
 
-class ParsingConfig(Base):
+class KucoinApiKey(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(50), unique=True)
-    config: Mapped[dict] = mapped_column(JSON, default={})
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    name: Mapped[str] = mapped_column(String(50))
+    api_key: Mapped[str] = mapped_column(String(50), unique=True)
+    api_secret: Mapped[str] = mapped_column(String(50), unique=True)
+    api_passphrase: Mapped[str] = mapped_column(String(50), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    limit_requests: Mapped[int] = mapped_column(Integer, default=1000)
+    requests_count: Mapped[int] = mapped_column(Integer, default=0)
+    timedelta_refresh: Mapped[int] = mapped_column(Integer, default=60)
+    next_refresh: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
 
-    coins: Mapped[list['ParsingConfigCoin']] = relationship(back_populates='parsing_config')
+    user: Mapped['User'] = relationship(back_populates='kucoin_api_keys')
+    request_logs: Mapped[list['KucoinApiKeyRequestLog']] = relationship(back_populates='kucoin_api_key')
+    orders: Mapped[list['Order']] = relationship(back_populates='kucoin_api_key')
+    portfolio: Mapped[list['Portfolio']] = relationship(back_populates='kucoin_api_key')
 
-    @property
-    def coins_list(self) -> list[str]:
-        return [coin.coin.name for coin in self.coins]
 
-class ParsingConfigCoin(Base):
+class Portfolio(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    parsing_config_id: Mapped[int] = mapped_column(ForeignKey('parsing_configs.id'))
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    kucoin_api_key_id: Mapped[int] = mapped_column(ForeignKey('kucoin_api_keys.id'))
     coin_id: Mapped[int] = mapped_column(ForeignKey('coins.id'))
+    amount: Mapped[float] = mapped_column(Float)
+    average_price: Mapped[float] = mapped_column(Float)
 
-    parsing_config: Mapped['ParsingConfig'] = relationship(back_populates='coins')
-    coin: Mapped['Coin'] = relationship(back_populates='parsing_configs')
+    user: Mapped['User'] = relationship(back_populates='portfolio')
+    kucoin_api_key: Mapped['KucoinApiKey'] = relationship(back_populates='portfolio')
+    coin: Mapped['Coin'] = relationship(back_populates='portfolio')
+
+
+class Order(Base):
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    kucoin_api_key_id: Mapped[int] = mapped_column(ForeignKey('kucoin_api_keys.id'))
+    exchange_order_id: Mapped[str] = mapped_column(String(100))
+    coin_id: Mapped[int] = mapped_column(ForeignKey('coins.id'))
+    order_type: Mapped[str] = mapped_column(String(50)) # limit or market
+    side: Mapped[str] = mapped_column(String(50)) # buy or sell
+    size: Mapped[float] = mapped_column(Float) # size of the order
+    price: Mapped[float] = mapped_column(Float) # price of the order
+    status: Mapped[str] = mapped_column(String(50), default='open') # open or closed
+
+    user: Mapped['User'] = relationship(back_populates='orders')
+    kucoin_api_key: Mapped['KucoinApiKey'] = relationship(back_populates='orders')
+    
+
+class RequestLog(Base):
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+
+    request_type: Mapped[str] = mapped_column(String(50))
+    request_data: Mapped[str] = mapped_column(String(100000))
+    response_data: Mapped[str] = mapped_column(String(100000))
+    status_code: Mapped[int] = mapped_column(Integer)
+
+    user: Mapped['User'] = relationship(back_populates='request_logs')
+    kucoin_api_key_request_logs: Mapped[list['KucoinApiKeyRequestLog']] = relationship(back_populates='request_log')
+
+
+class KucoinApiKeyRequestLog(Base):
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    kucoin_api_key_id: Mapped[int] = mapped_column(ForeignKey('kucoin_api_keys.id'))
+    request_log_id: Mapped[int] = mapped_column(ForeignKey('request_logs.id'))
+
+    kucoin_api_key: Mapped['KucoinApiKey'] = relationship(back_populates='request_logs')
+    request_log: Mapped['RequestLog'] = relationship(back_populates='kucoin_api_key_request_logs')
 
 
 class ParsingTask(Base):

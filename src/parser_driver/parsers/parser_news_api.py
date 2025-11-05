@@ -4,8 +4,8 @@ import time
 from datetime import datetime 
 
 from src.parser_driver.api import ParserApi
-from src.core.database import NewsData, orm_add_news
-from src.core.settings import settings 
+from src.core.database.orm import NewsData, orm_add_news
+from src.core.settings import settings_parser 
 
 import logging
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("parser_logger.ParserNewsApi")
 class ParserNewsApi(ParserApi):
     # 4 request max per minute
 
-    api_key = settings.coindesk.api_key
+    api_key = settings_parser.coindesk.api_key
 
     URL_API = "https://data-api.coindesk.com"
 

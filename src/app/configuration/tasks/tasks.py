@@ -1,13 +1,32 @@
 import asyncio
+import logging
+from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import update
+import json
+
+logger = logging.getLogger(__name__)
+
+# from src.core import data_manager
+# from backend.MMM import AgentManager  # Temporarily disabled for testing
+# from Dataset import LoaderTimeLine, DatasetTimeseries  # Temporarily disabled for testing
+# from train_models import Loader as TrainLoader  # Temporarily disabled for testing
+
+# from src.core.database import (get_db_helper, 
+#                               AgentTrain, Agent, AgentFeature,
+#                               orm_get_feature_by_id,
+#                               orm_get_agent_by_id,
+#                               orm_get_timeseries_by_coin,
+#                               orm_get_data_timeseries)
+import asyncio
 from datetime import datetime
 import logging
 
-from .celery_app import celery_app
+from src.app.celery_app import celery_app
 from src.handlers.att_parser import AttParser
 from src.handlers.parser_handler import Handler as HandlerParser
 
 logger = logging.getLogger("parser_logger.tasks")
-
 
 @celery_app.task(
     bind=True, 
@@ -56,13 +75,14 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
         
         # Создаем новый экземпляр Database в контексте нового event loop
         from src.core.database.engine import Database
-        from src.core.settings import settings
+        from src.core.settings import settings_app
+
         local_db_helper = Database(
-            url=settings.database.get_url(),
-            echo=settings.database.echo,
-            echo_pool=settings.database.echo_pool,
-            pool_size=settings.database.pool_size,
-            max_overflow=settings.database.max_overflow
+            url=settings_app.database.get_url(),
+            echo=settings_app.database.echo,
+            echo_pool=settings_app.database.echo_pool,
+            pool_size=settings_app.database.pool_size,
+            max_overflow=settings_app.database.max_overflow
         )
         
         try:
@@ -220,3 +240,105 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
         
         return {"status": "error", "error": error_msg, "traceback": error_traceback}
 
+
+async def start_process_train(train_data: dict):
+    pass
+
+# async def start_process_train(train_data: dict):
+#    async with db_helper.get_session() as session:
+
+#         # Получаем процесс
+#         query = select(AgentTrain).filter(AgentTrain.id == train_data["id"])
+#         query = query.options(joinedload(AgentTrain.coins))
+
+#         query = query.options(selectinload(AgentTrain.agent)
+#                               .selectinload(Agent.features)
+#                               .selectinload(AgentFeature.feature_value))
+
+#         result = await session.execute(query)
+#         process = result.scalars().first()
+        
+#         if process and process.status == "start":
+#             logger.info(f"Запуск процесса ID: {process.id}")
+            
+#             # Обновляем статус - начат
+#             process.set_status("train")
+#             agent = await orm_get_agent_by_id(session, process.agent_id)
+#             agent.set_status("train")
+#             agent.active = False
+
+#             await session.commit()
+
+#             # filename = data_manager["data"] / "t.json"
+#             indecaters = {}
+
+#             for feature in process.agent.features:
+#                 parameters = {value.feature_name: value.value for value in feature.feature_value}
+#                 feature_t = await orm_get_feature_by_id(session, feature.feature_id)
+#                 indecaters[feature_t.name] = parameters
+
+#             config = {"agents": [
+#                 {
+#                     "type": process.agent.type,
+#                     "name": process.agent.name,
+#                     "timetravel": process.agent.timeframe,
+#                     "data_normalize": True,
+#                     "mod": "train",
+#                     "indecaters": indecaters
+#                 }
+#             ]}
+
+#             async def load_loader(coin):
+#                 tm = await orm_get_timeseries_by_coin(session, coin,
+#                                                                 timeframe=process.agent.timeframe)
+#                 data = await orm_get_data_timeseries(session, tm.id)
+                
+#                 dt = DatasetTimeseries(data)
+
+#                 return dt
+            
+#             def filter_func(x):
+#                 if x["open"] != "x" and isinstance(x["open"], str):
+#                     logger.error(f"Data validation error: {x}")
+#                     return True
+#                 return x["open"] != "x"
+
+#             loaders = [LoaderTimeLine(await load_loader(coin), 200,
+#                                       filter_func, timetravel=process.agent.timeframe) for coin in process.coins]
+
+#             agent_manager = AgentManager(config=config)
+#             trin_loader = TrainLoader()
+
+#             loader = trin_loader.load_agent_data(loaders, agent_manager.get_agents(), process.batch_size, False)
+
+#             for data in loader:
+#                 logger.debug(f"Training data batch: {data}")
+
+#             # trin_loader._train_single_agent(agent_manager.get_agents(), loaders,
+#             #                                 epochs=process.epochs,
+#             #                                 batch_size=process.batch_size,
+#             #                                 base_lr=process.learning_rate,
+#             #                                 weight_decay=process.weight_decay,
+#             #                                 patience=7,
+#             #                                 mixed=True,
+#             #                                 mixed_precision=True)
+
+#             # logger.debug(f"Agent manager agents: {agent_manager.get_agents()}")
+
+#             # with open(filename, "w") as f:
+
+#             #     json.dump({"coins": [coin.name for coin in process.coins],
+#             #                 "agent": process.agent.id,
+#             #                "features": features_data}, f)
+            
+#             # Здесь ваша логика запуска процесса (асинхронная)
+#             # Например, вызов внешнего API или запуск асинхронного кода
+#             # await asyncio.sleep(600)  # Имитация длительной задачи
+
+#             logger.info(f"Процесс ID: {process.id} завершен")
+            
+#             # Обновляем статус - завершен
+#             process.set_status("stop")
+#             agent.set_status("open")
+#             agent.active = True
+#             await session.commit()

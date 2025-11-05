@@ -27,6 +27,9 @@ fastapi = {extras = ["standard"], version = "^0.120.3"}
 celery = {extras = ["redis"], version = "^5.4.0"}
 kombu = "^5.4.0"
 uvicorn = "^0.38.0"
+passlib = "^1.7.4"
+prometheus-client = "^0.23.1"
+python-jose = "^3.5.0"
 
 [tool.poetry.group.gui.dependencies]
 sktime = ">=0.37.0,<0.38.0"

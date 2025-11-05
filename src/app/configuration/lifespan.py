@@ -1,12 +1,7 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
 
-from .api.routes import coins, news, parsing
-from src.core.database.engine import db_helper
+from src.core.database import get_db_helper
 from src.core.utils.configure_logging import setup_logging
 
 import logging
@@ -24,6 +19,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting FastAPI application...")
     
     # Инициализация БД
+
+    db_helper = get_db_helper()
     await db_helper.init_db()
     logger.info("Database initialized")
     
@@ -169,68 +166,4 @@ async def restore_unfinished_tasks():
             
     except Exception as e:
         logger.error(f"Error during task restoration: {e}", exc_info=True)
-
-
-app = FastAPI(
-    title="KuCoin Parser API",
-    description="API для просмотра данных парсинга и управления парсингом через Celery",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# Настройка CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Подключение роутеров
-app.include_router(coins.router)
-app.include_router(news.router)
-app.include_router(parsing.router)
-
-# Подключение статических файлов
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    """
-    Главная страница с фронтендом
-    """
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        with open(index_file, "r", encoding="utf-8") as f:
-            return f.read()
-    return HTMLResponse(content="<h1>Frontend not found</h1>", status_code=404)
-
-
-@app.get("/api")
-async def api_info():
-    """
-    Информация об API
-    """
-    return {
-        "message": "KuCoin Parser API",
-        "version": "1.0.0",
-        "endpoints": {
-            "coins": "/coins",
-            "news": "/news",
-            "parsing": "/parsing"
-        },
-        "docs": "/docs"
-    }
-
-
-@app.get("/health")
-async def health_check():
-    """
-    Проверка здоровья приложения
-    """
-    return {"status": "healthy"}
 

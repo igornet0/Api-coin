@@ -4,8 +4,8 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.dependencies import get_session
-from src.app.schemas import CoinResponse, TimeseriesResponse, DataTimeseriesResponse, CoinCreateRequest, CoinsUploadResponse
+from src.app.configuration import Server
+from src.app.configuration.schemas import CoinResponse, TimeseriesResponse, DataTimeseriesResponse, CoinCreateRequest, CoinsUploadResponse
 from src.core.database.orm import (
     orm_get_coins,
     orm_get_coin_by_name,
@@ -21,8 +21,7 @@ router = APIRouter(prefix="/coins", tags=["coins"])
 @router.get("/", response_model=List[CoinResponse])
 async def get_coins(
     parsed: Optional[bool] = Query(None, description="Фильтр по статусу парсинга"),
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить список всех монет
     """
@@ -37,8 +36,7 @@ async def get_coins(
 @router.get("/{coin_name}", response_model=CoinResponse)
 async def get_coin_by_name(
     coin_name: str,
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить информацию о монете по имени
     """
@@ -54,8 +52,7 @@ async def get_coin_by_name(
 async def get_coin_timeseries(
     coin_name: str,
     timestamp: Optional[str] = Query(None, description="Фильтр по timestamp (например, 5m, 1h)"),
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить временные ряды для монеты
     """
@@ -72,8 +69,7 @@ async def get_coin_timeseries(
 @router.get("/timeseries/{timeseries_id}/data", response_model=List[DataTimeseriesResponse])
 async def get_timeseries_data(
     timeseries_id: int,
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить данные временного ряда
     """
@@ -88,8 +84,7 @@ async def get_timeseries_data(
 @router.post("/", response_model=CoinResponse)
 async def create_coin(
     coin_data: CoinCreateRequest,
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Добавить новую монету
     """
@@ -110,7 +105,7 @@ async def create_coin(
 @router.post("/upload", response_model=CoinsUploadResponse)
 async def upload_coins_csv(
     file: UploadFile = File(..., description="CSV файл со списком монет"),
-    session: AsyncSession = Depends(get_session)):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Загрузить список монет из CSV файла
     Формат CSV: колонка 'name' с названиями монет
@@ -183,8 +178,7 @@ async def upload_coins_csv(
 @router.delete("/{coin_name}", response_model=dict)
 async def delete_coin(
     coin_name: str,
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Удалить монету
     """
@@ -209,8 +203,7 @@ async def delete_coin(
 @router.get("/{coin_name}/export-csv")
 async def export_coin_data_timeseries_csv(
     coin_name: str,
-    session: AsyncSession = Depends(get_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Выгрузить все данные DataTimeseries для монеты в формате CSV
     """

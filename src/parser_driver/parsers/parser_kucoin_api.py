@@ -5,7 +5,7 @@ from kucoin.client import User, Trade, Market
 import aiohttp
 import asyncio
 from src.parser_driver.api import ParserApi
-from src.core import settings 
+from src.core import settings_parser
 from src.core.models.dataset import DatasetTimeseries
 
 import logging
@@ -36,9 +36,9 @@ def formating_datetime(x):
 
 class KuCoinAPI(ParserApi):
         
-    api_key = settings.kucoin.api_key
-    api_secret = settings.kucoin.api_secret
-    api_passphrase = settings.kucoin.api_passphrase
+    api_key = settings_parser.kucoin.api_key
+    api_secret = settings_parser.kucoin.api_secret
+    api_passphrase = settings_parser.kucoin.api_passphrase
 
     args_entry = (api_key, api_secret, api_passphrase)
     

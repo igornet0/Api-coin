@@ -8,7 +8,7 @@ UploadFile = object
 
 from src.parser_driver.api import ParserApi
 from src.core.models import Dataset, DatasetTimeseries
-from src.core.settings import settings 
+from src.core.settings import settings_parser 
 from src.core.utils.tesseract_img_text import RU_EN_timetravel, timetravel_seconds_int
 import logging 
 
@@ -66,10 +66,10 @@ class ParserKucoin(ParserApi):
         return True
 
     async def init(self, coin: str) -> None:
-        url = settings.driver.get_url(coin)
+        url = settings_parser.driver.get_url(coin)
 
-        await self.start_web(url, show_browser=settings.driver.show_browser, 
-                       window_size=settings.driver.window_size)
+        await self.start_web(url, show_browser=settings_parser.driver.show_browser, 
+                       window_size=settings_parser.driver.window_size)
 
         if self.device.cursor.get_position["start"] is None:
             self.device.cursor.set_position()

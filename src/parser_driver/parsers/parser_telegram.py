@@ -3,8 +3,8 @@ from datetime import timezone, timedelta
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel
 
-from src.core import settings
-from src.core.database import NewsData, orm_add_news
+from src.core import settings_parser
+from src.core.database.orm import NewsData, orm_add_news
 
 import logging
 
@@ -15,9 +15,9 @@ BUFFER_SIZE = 100
 class TelegramParser(TelegramClient):
 
     def __init__(self):
-        self.phone = settings.tg.phone
-        super().__init__('session', settings.tg.api_id, 
-                         settings.tg.api_hash)
+        self.phone = settings_parser.tg.phone
+        super().__init__('session', settings_parser.tg.api_id, 
+                         settings_parser.tg.api_hash)
         self.buffer_messages = []
         self._db = None
         self.filter = None

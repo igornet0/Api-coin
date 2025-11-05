@@ -11,7 +11,9 @@ import os
 from src.parser_driver import (ParserApi, KuCoinAPI, ParserNewsApi, 
                            ParserKucoin, TelegramParser)
 from src.core.models import Dataset, DatasetTimeseries
-from src.core.database.orm import *
+from src.core.database.orm import (NewsData, orm_get_coins, orm_get_timeseries_by_coin, 
+                                    orm_add_timeseries, orm_add_data_timeseries, orm_update_coin_price, 
+                                    orm_get_telegram_channels, orm_add_news)
 from src.core.utils import AutoDecorator
 from src.core.utils.tesseract_img_text import image_to_text
 from src.core import data_manager, Database, telegram_settings

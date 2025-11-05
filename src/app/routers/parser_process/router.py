@@ -3,27 +3,20 @@ from fastapi import APIRouter, HTTPException, Depends
 from celery.result import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.schemas import ParsingTaskRequest, ParsingTaskResponse, TaskStatusResponse, ParsingTaskListItem
-from src.app.celery_app import celery_app
-from src.app.tasks import run_parser_task
-from src.handlers.parser_handler import Handler as HandlerParser
-from src.core.database.engine import db_helper
 from src.core.database.orm import orm_create_parsing_task, orm_get_parsing_task_by_task_id, orm_get_all_parsing_tasks
 
+from src.app.celery_app import celery_app
+from src.app.configuration import run_parser_task, Server
+from src.app.configuration.schemas import ParsingTaskRequest, ParsingTaskResponse, TaskStatusResponse, ParsingTaskListItem
+from src.handlers.parser_handler import Handler as HandlerParser
+
 router = APIRouter(prefix="/parsing", tags=["parsing"])
-
-
-async def get_db_session():
-    """Dependency для получения сессии БД"""
-    async with db_helper.get_session() as session:
-        yield session
 
 
 @router.post("/start", response_model=ParsingTaskResponse)
 async def start_parsing(
     task_request: ParsingTaskRequest,
-    session: AsyncSession = Depends(get_db_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Запустить задачу парсинга через Celery и создать запись в БД
     """
@@ -79,8 +72,7 @@ async def start_parsing(
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(
     task_id: str,
-    session: AsyncSession = Depends(get_db_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить статус задачи парсинга из БД (с приоритетом) или из Celery
     """
@@ -154,8 +146,7 @@ async def get_task_status(
 async def get_tasks(
     limit: int = 50,
     status: str = None,
-    session: AsyncSession = Depends(get_db_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Получить список задач парсинга из БД
     """
@@ -184,8 +175,7 @@ async def get_tasks(
 @router.post("/stop/{task_id}", response_model=Dict[str, str])
 async def stop_task(
     task_id: str,
-    session: AsyncSession = Depends(get_db_session)
-):
+    session: AsyncSession = Depends(Server.get_db)):
     """
     Остановить задачу парсинга и обновить статус в БД
     """
@@ -208,4 +198,3 @@ async def stop_task(
         "status": "revoked",
         "message": f"Task {task_id} has been revoked"
     }
-

@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 import sys
 
-from src.core.settings import settings
+from src.core.settings import settings_app
 from src.core import data_manager
 
 logging.getLogger("selenium").setLevel(logging.WARNING)
@@ -46,13 +46,13 @@ def setup_logging():
 
     # Корневой логгер (все сообщения)
     root_logger = logging.getLogger()
-    root_logger.setLevel(settings.logging.log_level)
+    root_logger.setLevel(settings_app.logging.log_level)
     
     # Форматтер для всех логов
-    formatter = logging.Formatter(settings.logging.format)
+    formatter = logging.Formatter(settings_app.logging.format)
     
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(settings.logging.log_level)
+    console_handler.setLevel(settings_app.logging.log_level)
     
     # Общий файловый хендлерs
     common_handler = RotatingFileHandler(data_manager["log"] / "all.log", maxBytes=1e6, backupCount=3)
@@ -62,14 +62,14 @@ def setup_logging():
     parser_logger = logging.getLogger("parser_logger")
     parser_handler = RotatingFileHandler(data_manager["log"] / "parser_logger.log", maxBytes=1e6, backupCount=3)
     parser_handler.setFormatter(formatter)
-    parser_handler.setLevel(settings.logging.log_level)
+    parser_handler.setLevel(settings_app.logging.log_level)
     parser_logger.addHandler(parser_handler)
 
     # database
     database_logger = logging.getLogger("Database")
     database_handler = RotatingFileHandler(data_manager["log"] / "database.log", maxBytes=1e6, backupCount=3)
     database_handler.setFormatter(formatter)
-    database_handler.setLevel(settings.logging.log_level)
+    database_handler.setLevel(settings_app.logging.log_level)
     database_logger.addHandler(database_handler)
 
     root_logger.addHandler(console_handler)

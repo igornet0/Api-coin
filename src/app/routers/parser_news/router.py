@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
-from src.app.dependencies import get_session
-from src.app.schemas import NewsResponse, TelegramChannelResponse, NewsUrlResponse
+from src.app.configuration import Server
+from src.app.configuration.schemas import NewsResponse, TelegramChannelResponse, NewsUrlResponse
 from src.core.database.orm import (
     orm_get_news,
     orm_get_news_list,
@@ -22,7 +22,7 @@ async def get_news(
     type: Optional[str] = Query(None, description="Тип новости"),
     limit: int = Query(100, description="Максимальное количество новостей"),
     offset: int = Query(0, description="Смещение для пагинации"),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(Server.get_db)
 ):
     """
     Получить список новостей с фильтрами
@@ -34,7 +34,7 @@ async def get_news(
 @router.get("/urls", response_model=List[NewsUrlResponse])
 async def get_news_urls(
     parsed: Optional[bool] = Query(None, description="Фильтр по статусу парсинга"),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(Server.get_db)
 ):
     """
     Получить список URL новостей
@@ -46,7 +46,7 @@ async def get_news_urls(
 @router.get("/urls/{url_id}", response_model=NewsUrlResponse)
 async def get_news_url_by_id(
     url_id: int,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(Server.get_db)
 ):
     """
     Получить информацию о URL новости по ID
@@ -62,7 +62,7 @@ async def get_news_url_by_id(
 @router.get("/channels", response_model=List[TelegramChannelResponse])
 async def get_telegram_channels(
     parsed: Optional[bool] = Query(None, description="Фильтр по статусу парсинга"),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(Server.get_db)
 ):
     """
     Получить список Telegram каналов
@@ -74,7 +74,7 @@ async def get_telegram_channels(
 @router.get("/channels/{channel_id}", response_model=TelegramChannelResponse)
 async def get_telegram_channel_by_id(
     channel_id: int,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(Server.get_db)
 ):
     """
     Получить информацию о Telegram канале по ID
