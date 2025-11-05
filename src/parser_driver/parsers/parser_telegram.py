@@ -4,7 +4,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import Channel
 
 from src.core import settings_parser
-from src.core.database.orm import NewsData, orm_add_news
+from src.core.database.orm import NewsData, NewsQuery
 
 import logging
 
@@ -17,11 +17,11 @@ class TelegramParser(TelegramClient):
     def __init__(self):
         self.phone = settings_parser.tg.phone
         super().__init__('session', settings_parser.tg.api_id, 
-                         settings_parser.tg.api_hash)
+                         settings_parser.tg.api_hash, save_db=True)
         self.buffer_messages = []
-        self._db = None
         self.filter = None
         self.clear_text = None
+        self.save_db = False
 
     def set_filter(self, filter: callable):
         self.filter = filter
@@ -29,19 +29,14 @@ class TelegramParser(TelegramClient):
     def set_clear_text(self, clear_text: callable):
         self.clear_text = clear_text
 
-    def init_db(self, db):
-        self._db = db
-
-    @property
-    def db(self):
-        return self._db
+    def set_save_db(self, save_db: bool):
+        self.save_db = save_db
 
     async def add_message_to_buffer(self, message: NewsData):
         self.buffer_messages.append(message)
 
-        if self.db:
-            async with self.db.get_session() as session:
-                await orm_add_news(session, message)
+        if self.save_db:
+            await NewsQuery.add_news(message)
 
         if len(self.buffer_messages) > BUFFER_SIZE:
             self.buffer_messages.pop(0)

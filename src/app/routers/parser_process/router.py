@@ -1,9 +1,10 @@
+from datetime import datetime
 from typing import Dict
 from fastapi import APIRouter, HTTPException, Depends
 from celery.result import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.orm import orm_create_parsing_task, orm_get_parsing_task_by_task_id, orm_get_all_parsing_tasks
+from src.core.database.orm import TaskQuery
 
 from src.app.celery_app import celery_app
 from src.app.configuration import run_parser_task, Server
@@ -15,8 +16,7 @@ router = APIRouter(prefix="/parsing", tags=["parsing"])
 
 @router.post("/start", response_model=ParsingTaskResponse)
 async def start_parsing(
-    task_request: ParsingTaskRequest,
-    session: AsyncSession = Depends(Server.get_db)):
+    task_request: ParsingTaskRequest):
     """
     Запустить задачу парсинга через Celery и создать запись в БД
     """
@@ -46,8 +46,7 @@ async def start_parsing(
     )
     
     # Создаем запись в БД
-    db_task = await orm_create_parsing_task(
-        session=session,
+    db_task = await TaskQuery.create_parsing_task(
         task_id=task.id,
         parser_type=task_request.parser_type,
         count=task_request.count,
@@ -71,13 +70,12 @@ async def start_parsing(
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(
-    task_id: str,
-    session: AsyncSession = Depends(Server.get_db)):
+    task_id: str):
     """
     Получить статус задачи парсинга из БД (с приоритетом) или из Celery
     """
     # Сначала пытаемся получить из БД
-    db_task = await orm_get_parsing_task_by_task_id(session, task_id)
+    db_task = await TaskQuery.get_parsing_task_by_task_id(task_id)
     
     if db_task:
         # Если задача найдена в БД, возвращаем статус из БД
@@ -145,13 +143,11 @@ async def get_task_status(
 @router.get("/tasks", response_model=list[ParsingTaskListItem])
 async def get_tasks(
     limit: int = 50,
-    status: str = None,
-    session: AsyncSession = Depends(Server.get_db)):
+    status: str = None,):
     """
     Получить список задач парсинга из БД
     """
-    tasks = await orm_get_all_parsing_tasks(
-        session=session,
+    tasks = await TaskQuery.get_all_parsing_tasks(
         limit=limit,
         status=status
     )
@@ -174,8 +170,7 @@ async def get_tasks(
 
 @router.post("/stop/{task_id}", response_model=Dict[str, str])
 async def stop_task(
-    task_id: str,
-    session: AsyncSession = Depends(Server.get_db)):
+    task_id: str):
     """
     Остановить задачу парсинга и обновить статус в БД
     """
@@ -183,10 +178,8 @@ async def stop_task(
     celery_app.control.revoke(task_id, terminate=True)
     
     # Обновляем статус в БД
-    from src.core.database.orm import orm_update_parsing_task_status
-    from datetime import datetime
-    await orm_update_parsing_task_status(
-        session=session,
+
+    await TaskQuery.update_parsing_task_status(
         task_id=task_id,
         status="revoked",
         progress_message="Задача была остановлена пользователем",

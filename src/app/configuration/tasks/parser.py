@@ -12,12 +12,7 @@ logger = logging.getLogger(__name__)
 # from Dataset import LoaderTimeLine, DatasetTimeseries  # Temporarily disabled for testing
 # from train_models import Loader as TrainLoader  # Temporarily disabled for testing
 
-# from src.core.database import (get_db_helper, 
-#                               AgentTrain, Agent, AgentFeature,
-#                               orm_get_feature_by_id,
-#                               orm_get_agent_by_id,
-#                               orm_get_timeseries_by_coin,
-#                               orm_get_data_timeseries)
+
 import asyncio
 from datetime import datetime
 import logging
@@ -27,6 +22,8 @@ from src.app.celery_app import celery_app
 from src.handlers.att_parser import AttParser
 from src.handlers.parser_handler import Handler as HandlerParser
 from celery.signals import task_retry
+
+from src.core.database.orm import TaskQuery
 
 logger = logging.getLogger("parser_logger.tasks")
 
@@ -97,69 +94,67 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
         asyncio.set_event_loop(loop)
         
         # Создаем новый экземпляр Database в контексте нового event loop
-        from src.core.database.engine import Database
+        # from src.core.database.engine import Database
         from src.core.settings import settings_app
 
-        local_db_helper = Database(
-            url=settings_app.database.get_url(),
-            echo=settings_app.database.echo,
-            echo_pool=settings_app.database.echo_pool,
-            pool_size=settings_app.database.pool_size,
-            max_overflow=settings_app.database.max_overflow
-        )
+        # local_db_helper = Database(
+        #     url=settings_app.database.get_url(),
+        #     echo=settings_app.database.echo,
+        #     echo_pool=settings_app.database.echo_pool,
+        #     pool_size=settings_app.database.pool_size,
+        #     max_overflow=settings_app.database.max_overflow
+        # )
         
         try:
             async def run_async_parser():
-                from src.core.database.orm import orm_update_parsing_task_status
-                from datetime import datetime
                 
-                # Обновляем статус в БД: начало выполнения
-                async with local_db_helper.get_session() as session:
-                    await orm_update_parsing_task_status(
-                        session=session,
-                        task_id=self.request.id,
-                        status="in_progress",
-                        progress_message="Инициализация парсера...",
-                        started_at=datetime.utcnow()
-                    )
+
+                await TaskQuery.update_parsing_task_status(
+                    task_id=self.request.id,
+                    status="in_progress",
+                    progress_message="Инициализация парсера...",
+                    started_at=datetime.utcnow()
+                )
                 
                 self.update_state(state='PROGRESS', meta={'message': 'Подключение к базе данных...'})
-                await local_db_helper.init_db()
-                await att.init_db(local_db_helper)
+                # await local_db_helper.init_db()
+                # await att.init_db(local_db_helper)
                 
                 # Обновляем прогресс в БД
-                async with local_db_helper.get_session() as session:
-                    await orm_update_parsing_task_status(
-                        session=session,
-                        task_id=self.request.id,
-                        status="in_progress",
-                        progress_message="Подключение к базе данных..."
-                    )
-                
+                # async with local_db_helper.get_session() as session:
+                #     await orm_update_parsing_task_status(
+                #         session=session,
+                #         task_id=self.request.id,
+                #         status="in_progress",
+                #         progress_message="Подключение к базе данных..."
+                #     )
+
+                await TaskQuery.update_parsing_task_status(
+                    task_id=self.request.id,
+                    status="in_progress",
+                    progress_message="Подключение к базе данных..."
+                )
+
                 # Если указаны конкретные монеты, обновляем список
                 if coins:
                     self.update_state(state='PROGRESS', meta={'message': f'Установка списка монет: {coins}'})
-                    async with local_db_helper.get_session() as session:
-                        await orm_update_parsing_task_status(
-                            session=session,
-                            task_id=self.request.id,
-                            status="in_progress",
-                            progress_message=f'Установка списка монет: {coins}'
-                        )
+                    await TaskQuery.update_parsing_task_status(
+                        task_id=self.request.id,
+                        status="in_progress",
+                        progress_message=f'Установка списка монет: {coins}'
+                    )
                     await att.set_coin_list(coins)
                 
                 # Если режим ручной остановки, устанавливаем count = -1
                 actual_count = -1 if manual_stop else count
                 
                 self.update_state(state='PROGRESS', meta={'message': 'Запуск парсинга...'})
-                
-                async with local_db_helper.get_session() as session:
-                    await orm_update_parsing_task_status(
-                        session=session,
-                        task_id=self.request.id,
-                        status="in_progress",
-                        progress_message="Запуск парсинга..."
-                    )
+
+                await TaskQuery.update_parsing_task_status(
+                    task_id=self.request.id,
+                    status="in_progress",
+                    progress_message="Запуск парсинга..."
+                )
                 
                 data = await att.parse(
                     count=actual_count,
@@ -173,15 +168,13 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
                 
                 if not data:
                     result = {"status": "completed", "result": "No data parsed"}
-                    async with local_db_helper.get_session() as session:
-                        await orm_update_parsing_task_status(
-                            session=session,
-                            task_id=self.request.id,
-                            status="completed",
-                            progress_message="Парсинг завершен, данных не найдено",
-                            result=result,
-                            completed_at=datetime.utcnow()
-                        )
+                    await TaskQuery.update_parsing_task_status(
+                        task_id=self.request.id,
+                        status="completed",
+                        progress_message="Парсинг завершен, данных не найдено",
+                        result=result,
+                        completed_at=datetime.utcnow()
+                    )
                     return result
                 
                 result = {}
@@ -194,15 +187,23 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
                 final_result = {"status": "completed", "result": result}
                 
                 # Обновляем статус в БД: успешное завершение
-                async with local_db_helper.get_session() as session:
-                    await orm_update_parsing_task_status(
-                        session=session,
-                        task_id=self.request.id,
-                        status="completed",
-                        progress_message="Парсинг успешно завершен",
-                        result=final_result,
-                        completed_at=datetime.utcnow()
-                    )
+                # async with local_db_helper.get_session() as session:
+                #     await orm_update_parsing_task_status(
+                #         session=session,
+                #         task_id=self.request.id,
+                #         status="completed",
+                #         progress_message="Парсинг успешно завершен",
+                #         result=final_result,
+                #         completed_at=datetime.utcnow()
+                #     )
+
+                await TaskQuery.update_parsing_task_status(
+                    task_id=self.request.id,
+                    status="completed",
+                    progress_message="Парсинг успешно завершен",
+                    result=final_result,
+                    completed_at=datetime.utcnow()
+                )
                 
                 return final_result
             
@@ -254,32 +255,18 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
                 
                 # Обновляем статус в БД
                 try:
-                    from src.core.database.engine import Database
-                    from src.core.settings import settings_app
-                    from src.core.database.orm import orm_update_parsing_task_status
-                    
-                    error_db_helper = Database(
-                        url=settings_app.database.get_url(),
-                        echo=settings_app.database.echo,
-                        echo_pool=settings_app.database.echo_pool,
-                        pool_size=settings_app.database.pool_size,
-                        max_overflow=settings_app.database.max_overflow
-                    )
                     
                     error_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(error_loop)
                     try:
                         async def update_timeout_status():
-                            async with error_db_helper.get_session() as session:
-                                await orm_update_parsing_task_status(
-                                    session=session,
-                                    task_id=self.request.id,
-                                    status="error",
-                                    progress_message=f"Задача превысила лимит времени выполнения",
-                                    error=error_msg,
-                                    completed_at=datetime.utcnow()
-                                )
-                            await error_db_helper.dispose()
+                            await TaskQuery.update_parsing_task_status(
+                                task_id=self.request.id,
+                                status="error",
+                                progress_message=f"Задача превысила лимит времени выполнения",
+                                error=error_msg,
+                                completed_at=datetime.utcnow()
+                            )
                         
                         error_loop.run_until_complete(update_timeout_status())
                     finally:
@@ -290,32 +277,11 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
                 # Не повторяем задачу при таймауте - это бессмысленно
                 return {"status": "error", "error": error_msg, "timeout": True}
         finally:
-            # Освобождаем ресурсы БД перед закрытием event loop
-            try:
-                if 'local_db_helper' in locals() and local_db_helper:
-                    # Создаем новый loop для cleanup, если основной был закрыт
-                    cleanup_loop = None
-                    try:
-                        if loop.is_closed():
-                            cleanup_loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(cleanup_loop)
-                            cleanup_loop.run_until_complete(local_db_helper.dispose())
-                        else:
-                            loop.run_until_complete(local_db_helper.dispose())
-                    except Exception as e:
-                        logger.warning(f"Error disposing database: {e}")
-                    finally:
-                        if cleanup_loop and not cleanup_loop.is_closed():
-                            cleanup_loop.close()
-            except Exception as e:
-                logger.warning(f"Error in finally block: {e}")
-            finally:
-                # Закрываем основной loop, если он еще не закрыт
-                if 'loop' in locals() and loop and not loop.is_closed():
-                    try:
-                        loop.close()
-                    except Exception as e:
-                        logger.warning(f"Error closing loop: {e}")
+            if 'loop' in locals() and loop and not loop.is_closed():
+                try:
+                    loop.close()
+                except Exception as e:
+                    logger.warning(f"Error closing loop: {e}")
             
     except SoftTimeLimitExceeded:
         # Пробрасываем SoftTimeLimitExceeded наверх для специальной обработки
@@ -328,34 +294,19 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
         
         # Обновляем статус в БД при ошибке
         try:
-            from src.core.database.engine import Database
-            from src.core.settings import settings
-            from src.core.database.orm import orm_update_parsing_task_status
-            from datetime import datetime
-            
-            error_db_helper = Database(
-                url=settings.database.get_url(),
-                echo=settings.database.echo,
-                echo_pool=settings.database.echo_pool,
-                pool_size=settings.database.pool_size,
-                max_overflow=settings.database.max_overflow
-            )
             
             error_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(error_loop)
             try:
                 async def update_error_status():
-                    async with error_db_helper.get_session() as session:
-                        await orm_update_parsing_task_status(
-                            session=session,
-                            task_id=self.request.id,
-                            status="error",
-                            progress_message=f"Ошибка: {error_msg}",
-                            error=error_msg,
-                            traceback=error_traceback,
-                            completed_at=datetime.utcnow()
-                        )
-                    await error_db_helper.dispose()
+                    await TaskQuery.update_parsing_task_status(
+                        task_id=self.request.id,
+                        status="error",
+                        progress_message=f"Ошибка: {error_msg}",
+                        error=error_msg,
+                        traceback=error_traceback,
+                        completed_at=datetime.utcnow()
+                    )
                 
                 error_loop.run_until_complete(update_error_status())
             finally:

@@ -11,9 +11,7 @@ import os
 from src.parser_driver import (ParserApi, KuCoinAPI, ParserNewsApi, 
                            ParserKucoin, TelegramParser)
 from src.core.models import Dataset, DatasetTimeseries
-from src.core.database.orm import (NewsData, PriceData, orm_get_coins, orm_get_timeseries_by_coin, 
-                                    orm_add_timeseries, orm_add_data_timeseries, orm_update_coin_price, 
-                                    orm_get_telegram_channels, orm_add_news)
+from src.core.database.orm import (NewsData, PriceData, CoinQuery, NewsQuery)
 from src.core.utils import AutoDecorator
 from src.core.utils.tesseract_img_text import image_to_text
 from src.core import data_manager, Database, telegram_settings
@@ -53,12 +51,15 @@ class AttParser:
         if not self.db:
             self.db = db
         
-        async with self.db.get_session() as session:
-            coins = await orm_get_coins(session)
-            self.coin_list = list(map(lambda x: x.name, filter(lambda x: x.parsed, coins)))
+        # async with self.db.get_session() as session:
+        #     coins = await orm_get_coins(session)
 
-    async def init_db(self, db: Database):
-        self.db = db
+        coins = await CoinQuery.get_coins()
+
+        self.coin_list = list(map(lambda x: x.name, coins))
+
+    # async def init_db(self, db: Database):
+    #     self.db = db
     
     async def set_coin_list(self, coins: List[str]):
         """Установить список монет для парсинга"""
@@ -66,22 +67,24 @@ class AttParser:
             raise ValueError("Database not initialized. Call init_db first.")
         
         # Проверяем, что все указанные монеты существуют в БД
-        async with self.db.get_session() as session:
-            all_coins = await orm_get_coins(session)
-            all_coin_names = {coin.name for coin in all_coins}
-            
-            # Фильтруем только существующие монеты
-            valid_coins = [coin.upper() for coin in coins if coin.upper() in all_coin_names]
-            
-            if not valid_coins:
-                raise ValueError(f"None of the specified coins exist in database: {coins}")
-            
-            if len(valid_coins) < len(coins):
-                invalid_coins = [coin for coin in coins if coin.upper() not in all_coin_names]
-                logger.warning(f"Some coins not found in database and will be skipped: {invalid_coins}")
-            
-            self.coin_list = valid_coins
-            logger.info(f"Coin list set to: {self.coin_list}")
+        # async with self.db.get_session() as session:
+        # all_coins = await orm_get_coins(session)
+
+        all_coins = await CoinQuery.get_coins()
+        all_coin_names = {coin.name for coin in all_coins}
+        
+        # Фильтруем только существующие монеты
+        valid_coins = [coin.upper() for coin in coins if coin.upper() in all_coin_names]
+        
+        if not valid_coins:
+            raise ValueError(f"None of the specified coins exist in database: {coins}")
+        
+        if len(valid_coins) < len(coins):
+            invalid_coins = [coin for coin in coins if coin.upper() not in all_coin_names]
+            logger.warning(f"Some coins not found in database and will be skipped: {invalid_coins}")
+        
+        self.coin_list = valid_coins
+        logger.info(f"Coin list set to: {self.coin_list}")
 
     async def _load_last_launch(self, time_parser):
         self.path_save = data_manager.get_last_launch()
@@ -149,7 +152,7 @@ class AttParser:
         if isinstance(self.api, ParserNewsApi):
             
             func_parser = self.api.get_last_news
-            self.api.init_db(self.db)
+            # self.api.init_db(self.db)
             check_stop = self._check_stop
 
             self.driver_lock = True
@@ -160,18 +163,19 @@ class AttParser:
             escaped = sorted(map(re.escape, telegram_settings.words), key=len, reverse=True)
             pattern = r'(?<!\w)(?:' + '|'.join(escaped) + r')(?!\w)'
             regex = re.compile(pattern, flags=re.IGNORECASE)
-            async with self.db.get_session() as session:
-                channels = await orm_get_telegram_channels(session, parsed=True)
+            # async with self.db.get_session() as session:
+            #     channels = await orm_get_telegram_channels(session, parsed=True)
+            channels = await NewsQuery.get_telegram_channels(parsed=True)
 
             def filter_event(event):
-                if not self.db:
-                    return True
+                # if not self.db:
+                #     return True
                 
                 return any(filter(lambda chanel: chanel.name == event.chat.title, channels))
 
             self.api.set_filter(lambda event: filter_event(event))
 
-            self.api.init_db(self.db)
+            # self.api.init_db(self.db)
             # tg_parser.start_parser_event({tg_parser.event_parsing_telegram_channel_pattern: {"pattern": regex}})
             func_parser = self.api.start_parser_event
             # func_parser = self.api.get_last_news
@@ -286,56 +290,58 @@ class AttParser:
         return dataset
 
     async def update_db_timeseries(self, coin: str, dataset: DatasetTimeseries, time_parser: str):
-        if self.db:    
-            async with self.db.get_session() as session:
-                ts = await orm_get_timeseries_by_coin(session, coin, time_parser)
+        # if self.db:    
+        #     async with self.db.get_session() as session:
+        ts = await CoinQuery.get_timeseries_by_coin(coin=coin, timestamp=time_parser)
 
-                if not ts:
-                    dataset.set_path_save(data_manager["processed"] / coin)
-                    ts = await orm_add_timeseries(session, coin=coin, timestamp=time_parser,
-                                                  path_dataset=str(dataset.get_path_save()))
+        if not ts:
+            dataset.set_path_save(data_manager["processed"] / coin)
+            ts = await CoinQuery.add_timeseries(coin=coin, timestamp=time_parser,
+                                            path_dataset=str(dataset.get_path_save()))
+        dataset.sort(ascending=False)
 
-                for data in dataset:
+        for data in dataset:
 
-                    data = {
-                        "datetime": data.get("datetime"),
-                        "open": float(data.get("open")),
-                        "close": float(data.get("close")),
-                        "max": float(data.get("max")),
-                        "min": float(data.get("min")),
-                        "volume": float(data.get("volume"))
-                    }
-                    
-                    if not await orm_add_data_timeseries(session, ts.id, data_timeseries=data):
-                        break
+            data = {
+                "datetime": data.get("datetime"),
+                "open": float(data.get("open")),
+                "close": float(data.get("close")),
+                "max": float(data.get("max")),
+                "min": float(data.get("min")),
+                "volume": float(data.get("volume"))
+            }
+            
+            if not await CoinQuery.add_data_timeseries(timeseries_id=ts.id, data_timeseries=data):
+                break
 
     async def update_db_timeseries_path(self, coin: str, dataset: DatasetTimeseries, time_parser: str):
-        if self.db and self.flag_save:    
-            async with self.db.get_session() as session:
-                await orm_add_timeseries(session, coin, time_parser, str(dataset.get_path_save()))
+        if self.flag_save:    
+            await CoinQuery.add_timeseries(coin=coin, 
+                                            timestamp=time_parser, 
+                                            path_dataset=str(dataset.get_path_save()))
     
     async def update_db_last_price(self, coin: str, dataset: DatasetTimeseries):
         # logger.info(f"Update lasp price {coin}")
-        if self.db:
-            async with self.db.get_session() as session:
-                data = dataset.get_last_row()
+        # if self.db:
+        #     async with self.db.get_session() as session:
+        data = dataset.get_last_row()
 
-                if isinstance(data["close"].item(), str) and data["close"].item() == "x":
-                    return False
-                
-                price_data = PriceData(
-                    price_now=float(data["close"].item()),
-                    max_price_now=float(data["max"].item()),
-                    min_price_now=float(data["min"].item()),
-                    open_price_now=float(data["open"].item()),
-                    volume_now=float(data["volume"].item())
-                )
+        if isinstance(data["close"].item(), str) and data["close"].item() == "x":
+            return False
+        
+        price_data = PriceData(
+            price_now=float(data["close"].item()),
+            max_price_now=float(data["max"].item()),
+            min_price_now=float(data["min"].item()),
+            open_price_now=float(data["open"].item()),
+            volume_now=float(data["volume"].item())
+        )
 
-                # logger.info(f"{price_data=}")
+        # logger.info(f"{price_data=}")
 
-                await orm_update_coin_price(session, coin, price_data)
+        await CoinQuery.update_coin_price(name=coin, price_data=price_data)
 
-                return True
+        return True
 
     async def add_byffer_data(self, data):
         self.buffer_data[datetime.now()] = data
@@ -437,6 +443,7 @@ class AttParser:
         else:
             # Если список пуст, загружаем из БД
             await self.update_coin_list(self.db)
+            
             for coin in self.coin_list:
                 coins[coin] = None
         

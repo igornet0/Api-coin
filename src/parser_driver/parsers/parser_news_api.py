@@ -4,7 +4,7 @@ import time
 from datetime import datetime 
 
 from src.parser_driver.api import ParserApi
-from src.core.database.orm import NewsData, orm_add_news
+from src.core.database.orm import NewsData, NewsQuery
 from src.core.settings import settings_parser 
 
 import logging
@@ -59,10 +59,6 @@ class ParserNewsApi(ParserApi):
             news_list.append(news)
 
             if self.db:
-                async with self.db.get_session() as session:
-                    try:
-                        await orm_add_news(session, news)
-                    except:
-                        break
+                await NewsQuery.add_news(news)
 
         return news_list

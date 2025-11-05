@@ -9,8 +9,7 @@ import time
 
 from src.app.configuration.auth import verify_authorization
 from src.app.services import get_ex_service
-from src.core.database.orm.orm_query_order import OrderQuery
-from src.core.database.orm.orm_query_coin import CoinQuery
+from src.core.database.orm import OrderQuery, CoinQuery
 
 router = APIRouter(prefix="/kucoin/trade", tags=["kucoin_trade"])
 logger = logging.getLogger(__name__)

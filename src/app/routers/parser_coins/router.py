@@ -6,41 +6,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.configuration import Server
 from src.app.configuration.schemas import CoinResponse, TimeseriesResponse, DataTimeseriesResponse, CoinCreateRequest, CoinsUploadResponse
-from src.core.database.orm import (
-    orm_get_coins,
-    orm_get_coin_by_name,
-    orm_get_timeseries_by_coin,
-    orm_get_data_timeseries,
-    orm_add_coin,
-    orm_get_all_data_timeseries_by_coin,
-)
+from src.core.database.orm import CoinQuery
+# ,
+#     orm_get_coins,
+#     orm_get_coin_by_name,
+#     orm_get_timeseries_by_coin,
+#     orm_get_data_timeseries,
+#     orm_add_coin,
+#     orm_get_all_data_timeseries_by_coin,
+# )
 
 router = APIRouter(prefix="/coins", tags=["coins"])
 
 
 @router.get("/", response_model=List[CoinResponse])
 async def get_coins(
-    parsed: Optional[bool] = Query(None, description="Фильтр по статусу парсинга"),
-    session: AsyncSession = Depends(Server.get_db)):
+    parsed: Optional[bool] = Query(None, description="Фильтр по статусу парсинга")):
     """
     Получить список всех монет
     """
-    coins = await orm_get_coins(session)
-    
-    if parsed is not None:
-        coins = [coin for coin in coins if coin.parsed == parsed]
+    coins = await CoinQuery.get_coins()
+    if not coins:
+        raise HTTPException(status_code=404, detail="No coins found")
     
     return coins
 
 
 @router.get("/{coin_name}", response_model=CoinResponse)
 async def get_coin_by_name(
-    coin_name: str,
-    session: AsyncSession = Depends(Server.get_db)):
+    coin_name: str):
     """
     Получить информацию о монете по имени
     """
-    coin = await orm_get_coin_by_name(session, coin_name)
+    coin = await CoinQuery.get_coin_by_symbol(coin_name)
     
     if not coin:
         raise HTTPException(status_code=404, detail=f"Coin {coin_name} not found")
@@ -51,29 +49,28 @@ async def get_coin_by_name(
 @router.get("/{coin_name}/timeseries", response_model=List[TimeseriesResponse])
 async def get_coin_timeseries(
     coin_name: str,
-    timestamp: Optional[str] = Query(None, description="Фильтр по timestamp (например, 5m, 1h)"),
-    session: AsyncSession = Depends(Server.get_db)):
+    timestamp: Optional[str] = Query(None, description="Фильтр по timestamp (например, 5m, 1h)")):
     """
     Получить временные ряды для монеты
     """
-    coin = await orm_get_coin_by_name(session, coin_name)
+    coin = await CoinQuery.get_coin_by_symbol(symbol=coin_name)
     
     if not coin:
         raise HTTPException(status_code=404, detail=f"Coin {coin_name} not found")
     
-    timeseries = await orm_get_timeseries_by_coin(session, coin, timestamp)
+    timeseries = await CoinQuery.get_timeseries_by_coin(coin=coin, timestamp=timestamp)
     
     return timeseries
 
 
 @router.get("/timeseries/{timeseries_id}/data", response_model=List[DataTimeseriesResponse])
 async def get_timeseries_data(
-    timeseries_id: int,
-    session: AsyncSession = Depends(Server.get_db)):
+    timeseries_id: int):
     """
     Получить данные временного ряда
     """
-    data = await orm_get_data_timeseries(session, timeseries_id)
+
+    data = await CoinQuery.get_data_timeseries(timeseries_id)
     
     if not data:
         raise HTTPException(status_code=404, detail=f"Timeseries {timeseries_id} not found")
@@ -83,19 +80,18 @@ async def get_timeseries_data(
 
 @router.post("/", response_model=CoinResponse)
 async def create_coin(
-    coin_data: CoinCreateRequest,
-    session: AsyncSession = Depends(Server.get_db)):
+    coin_data: CoinCreateRequest):
     """
     Добавить новую монету
     """
     try:
-        coin = await orm_add_coin(session, coin_data.name, coin_data.price_now)
+        coin = await CoinQuery.add_coin(name=coin_data.name, price_now=coin_data.price_now)
         
         # Обновляем статус парсинга если нужно
-        if coin.parsed != coin_data.parsed:
-            from src.core.database.orm import orm_change_parsing_status_coin
-            await orm_change_parsing_status_coin(session, coin_data.name, coin_data.parsed)
-            coin.parsed = coin_data.parsed
+        # if coin.parsed != coin_data.parsed:
+        #     from src.core.database.orm import orm_change_parsing_status_coin
+        #     await orm_change_parsing_status_coin(session, coin_data.name, coin_data.parsed)
+        #     coin.parsed = coin_data.parsed
         
         return coin
     except Exception as e:
@@ -104,8 +100,7 @@ async def create_coin(
 
 @router.post("/upload", response_model=CoinsUploadResponse)
 async def upload_coins_csv(
-    file: UploadFile = File(..., description="CSV файл со списком монет"),
-    session: AsyncSession = Depends(Server.get_db)):
+    file: UploadFile = File(..., description="CSV файл со списком монет")):
     """
     Загрузить список монет из CSV файла
     Формат CSV: колонка 'name' с названиями монет
@@ -151,13 +146,13 @@ async def upload_coins_csv(
             
             try:
                 # Проверяем существует ли монета
-                existing_coin = await orm_get_coin_by_name(session, coin_name)
+                existing_coin = await CoinQuery.get_coin_by_symbol(symbol=coin_name)
                 if existing_coin:
                     skipped += 1
                     continue
                 
                 # Добавляем монету
-                await orm_add_coin(session, coin_name, 0)
+                await CoinQuery.add_coin(name=coin_name, price_now=0)
                 added += 1
                 coin_names.append(coin_name)
                 
@@ -182,18 +177,13 @@ async def delete_coin(
     """
     Удалить монету
     """
-    coin = await orm_get_coin_by_name(session, coin_name)
+    coin = await CoinQuery.get_coin_by_symbol(symbol=coin_name)
     
     if not coin:
         raise HTTPException(status_code=404, detail=f"Coin {coin_name} not found")
     
     try:
-        from sqlalchemy import delete
-        from src.core.database.models import Coin
-        
-        query = delete(Coin).where(Coin.name == coin_name)
-        await session.execute(query)
-        await session.commit()
+        await CoinQuery.delete_coin(coin_name=coin_name)
         
         return {"message": f"Coin {coin_name} deleted successfully"}
     except Exception as e:
@@ -207,14 +197,14 @@ async def export_coin_data_timeseries_csv(
     """
     Выгрузить все данные DataTimeseries для монеты в формате CSV
     """
-    coin = await orm_get_coin_by_name(session, coin_name)
+    coin = await CoinQuery.get_coin_by_symbol(symbol=coin_name)
     
     if not coin:
         raise HTTPException(status_code=404, detail=f"Coin {coin_name} not found")
     
     try:
         # Получаем все DataTimeseries для монеты
-        data_timeseries = await orm_get_all_data_timeseries_by_coin(session, coin)
+        data_timeseries = await CoinQuery.get_all_data_timeseries_by_coin(coin=coin)
         
         if not data_timeseries:
             raise HTTPException(status_code=404, detail=f"No data found for coin {coin_name}")
