@@ -44,6 +44,8 @@ async def restore_unfinished_tasks():
         from .tasks import run_parser_task
         from celery.result import AsyncResult
         from datetime import datetime, timedelta
+
+        db_helper = get_db_helper()
         
         async with db_helper.get_session() as session:
             unfinished_tasks = await orm_get_unfinished_parsing_tasks(session)

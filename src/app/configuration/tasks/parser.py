@@ -30,7 +30,7 @@ logger = logging.getLogger("parser_logger.tasks")
 
 @celery_app.task(
     bind=True, 
-    name="app.tasks.parser.run_parser_task",
+    name="app.configuration.tasks.parser.run_parser_task",
     max_retries=3,  # Максимальное количество попыток
     default_retry_delay=60,  # Задержка перед повтором (секунды)
     autoretry_for=(Exception,),  # Автоматический retry для всех исключений
