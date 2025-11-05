@@ -31,6 +31,7 @@ import os
 # Добавляем путь к src в PYTHONPATH
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+
 def main():
     """Основная функция для запуска приложения"""
     # Парсинг аргументов командной строки
@@ -49,12 +50,11 @@ def main():
     load_database()
     
     # Создание приложения
-    from app.create_app import create_app
-    app = create_app()
+    # from app.main import app
     
     # Запуск сервера
     uvicorn.run(
-        "run_app:app",
+        "app:app",
         host=settings_app.app.host,
         port=settings_app.app.port,
         reload=settings_app.app.reload,
@@ -63,7 +63,7 @@ def main():
         limit_concurrency=settings_app.app.limit_concurrency,
     )
     
-    return app
+    # return app
 
 # # Загружаем настройки для использования uvicorn при импорте модуля
 # from core.settings import auto_load_settings
@@ -84,11 +84,11 @@ def main():
 # settings = auto_load_settings(env)
 
 # # Инициализация для модульного импорта
-from core.database import load_database
-load_database()
+# from core.database import load_database
+# load_database()
 
-from app.create_app import create_app
-app = create_app()
+# from app.main import create_app
+# app = create_app()
 
 if __name__ == "__main__":
     main()
