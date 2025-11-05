@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell app-shell celery-shell ps clean test install build-local stop-local check-services start-services
+.PHONY: help build up down restart logs shell app-shell celery-shell ps clean test install build-local stop-local check-services start-services build-service service-status service-start service-stop service-restart service-logs service-logs-app service-logs-celery service-enable service-disable
 
 # Цвета для вывода
 GREEN  := $(shell tput -Txterm setaf 2)
@@ -378,6 +378,120 @@ check-fastapi: ## Проверить статус FastAPI и показать л
 
 stats: ## Показать статистику использования ресурсов
 	$(DOCKER_COMPOSE) stats
+
+##@ Systemd сервисы
+
+build-service: ## Создать systemd service файлы для FastAPI и Celery
+	@echo "${GREEN}Создание systemd service файлов...${RESET}"
+	@if [ ! -d "systemd" ]; then \
+		echo "${RED}Директория systemd не найдена!${RESET}"; \
+		exit 1; \
+	fi
+	@if [ ! -f "systemd/api-coin-app.service" ] || [ ! -f "systemd/api-coin-celery-app.service" ]; then \
+		echo "${RED}Service файлы не найдены в директории systemd!${RESET}"; \
+		exit 1; \
+	fi
+	@CURRENT_USER=$$(whoami); \
+	CURRENT_HOME=$$(eval echo ~$$CURRENT_USER); \
+	PROJECT_DIR=$$(pwd); \
+	echo "${YELLOW}Пользователь: $$CURRENT_USER${RESET}"; \
+	echo "${YELLOW}Домашняя директория: $$CURRENT_HOME${RESET}"; \
+	echo "${YELLOW}Директория проекта: $$PROJECT_DIR${RESET}"; \
+	echo ""; \
+	echo "${GREEN}Создание финальных service файлов...${RESET}"; \
+	sed "s|__USER__|$$CURRENT_USER|g; s|__HOME__|$$CURRENT_HOME|g; s|__PROJECT_DIR__|$$PROJECT_DIR|g" systemd/api-coin-app.service > /tmp/api-coin-app.service; \
+	sed "s|__USER__|$$CURRENT_USER|g; s|__HOME__|$$CURRENT_HOME|g; s|__PROJECT_DIR__|$$PROJECT_DIR|g" systemd/api-coin-celery-app.service > /tmp/api-coin-celery-app.service; \
+	echo "${GREEN}Копирование service файлов в /etc/systemd/system/...${RESET}"; \
+	sudo cp /tmp/api-coin-app.service /etc/systemd/system/api-coin-app.service; \
+	sudo cp /tmp/api-coin-celery-app.service /etc/systemd/system/api-coin-celery-app.service; \
+	sudo chmod 644 /etc/systemd/system/api-coin-app.service; \
+	sudo chmod 644 /etc/systemd/system/api-coin-celery-app.service; \
+	echo "${GREEN}Перезагрузка systemd daemon...${RESET}"; \
+	sudo systemctl daemon-reload; \
+	echo ""; \
+	echo "${GREEN}✓ Service файлы успешно созданы и установлены!${RESET}"; \
+	echo ""; \
+	echo "${WHITE}Для управления сервисами используйте:${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl status api-coin-app${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl status api-coin-celery-app${RESET}"; \
+	echo ""; \
+	echo "${WHITE}Запуск сервисов:${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl start api-coin-app${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl start api-coin-celery-app${RESET}"; \
+	echo ""; \
+	echo "${WHITE}Остановка сервисов:${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl stop api-coin-app${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl stop api-coin-celery-app${RESET}"; \
+	echo ""; \
+	echo "${WHITE}Включение автозапуска при загрузке системы:${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl enable api-coin-app${RESET}"; \
+	echo "  ${YELLOW}sudo systemctl enable api-coin-celery-app${RESET}"; \
+	echo ""; \
+	echo "${WHITE}Просмотр логов:${RESET}"; \
+	echo "  ${YELLOW}sudo journalctl -u api-coin-app -f${RESET}"; \
+	echo "  ${YELLOW}sudo journalctl -u api-coin-celery-app -f${RESET}"; \
+	rm -f /tmp/api-coin-app.service /tmp/api-coin-celery-app.service
+
+service-status: ## Показать статус всех systemd сервисов
+	@echo "${GREEN}Статус api-coin-app:${RESET}"
+	@sudo systemctl status api-coin-app --no-pager || echo "${RED}Сервис api-coin-app не найден${RESET}"
+	@echo ""
+	@echo "${GREEN}Статус api-coin-celery-app:${RESET}"
+	@sudo systemctl status api-coin-celery-app --no-pager || echo "${RED}Сервис api-coin-celery-app не найден${RESET}"
+
+service-start: ## Запустить все systemd сервисы
+	@echo "${GREEN}Запуск api-coin-app...${RESET}"
+	@sudo systemctl start api-coin-app && echo "${GREEN}✓ api-coin-app запущен${RESET}" || echo "${RED}✗ Ошибка при запуске api-coin-app${RESET}"
+	@echo "${GREEN}Запуск api-coin-celery-app...${RESET}"
+	@sudo systemctl start api-coin-celery-app && echo "${GREEN}✓ api-coin-celery-app запущен${RESET}" || echo "${RED}✗ Ошибка при запуске api-coin-celery-app${RESET}"
+	@echo ""
+	@echo "${GREEN}Проверка статуса:${RESET}"
+	@make service-status
+
+service-stop: ## Остановить все systemd сервисы
+	@echo "${YELLOW}Остановка api-coin-app...${RESET}"
+	@sudo systemctl stop api-coin-app && echo "${GREEN}✓ api-coin-app остановлен${RESET}" || echo "${RED}✗ Ошибка при остановке api-coin-app${RESET}"
+	@echo "${YELLOW}Остановка api-coin-celery-app...${RESET}"
+	@sudo systemctl stop api-coin-celery-app && echo "${GREEN}✓ api-coin-celery-app остановлен${RESET}" || echo "${RED}✗ Ошибка при остановке api-coin-celery-app${RESET}"
+
+service-restart: ## Перезапустить все systemd сервисы
+	@echo "${YELLOW}Перезапуск api-coin-app...${RESET}"
+	@sudo systemctl restart api-coin-app && echo "${GREEN}✓ api-coin-app перезапущен${RESET}" || echo "${RED}✗ Ошибка при перезапуске api-coin-app${RESET}"
+	@echo "${YELLOW}Перезапуск api-coin-celery-app...${RESET}"
+	@sudo systemctl restart api-coin-celery-app && echo "${GREEN}✓ api-coin-celery-app перезапущен${RESET}" || echo "${RED}✗ Ошибка при перезапуске api-coin-celery-app${RESET}"
+	@echo ""
+	@sleep 2
+	@echo "${GREEN}Проверка статуса:${RESET}"
+	@make service-status
+
+service-enable: ## Включить автозапуск systemd сервисов при загрузке системы
+	@echo "${GREEN}Включение автозапуска api-coin-app...${RESET}"
+	@sudo systemctl enable api-coin-app && echo "${GREEN}✓ api-coin-app включен для автозапуска${RESET}" || echo "${RED}✗ Ошибка при включении автозапуска api-coin-app${RESET}"
+	@echo "${GREEN}Включение автозапуска api-coin-celery-app...${RESET}"
+	@sudo systemctl enable api-coin-celery-app && echo "${GREEN}✓ api-coin-celery-app включен для автозапуска${RESET}" || echo "${RED}✗ Ошибка при включении автозапуска api-coin-celery-app${RESET}"
+
+service-disable: ## Отключить автозапуск systemd сервисов при загрузке системы
+	@echo "${YELLOW}Отключение автозапуска api-coin-app...${RESET}"
+	@sudo systemctl disable api-coin-app && echo "${GREEN}✓ Автозапуск api-coin-app отключен${RESET}" || echo "${RED}✗ Ошибка при отключении автозапуска api-coin-app${RESET}"
+	@echo "${YELLOW}Отключение автозапуска api-coin-celery-app...${RESET}"
+	@sudo systemctl disable api-coin-celery-app && echo "${GREEN}✓ Автозапуск api-coin-celery-app отключен${RESET}" || echo "${RED}✗ Ошибка при отключении автозапуска api-coin-celery-app${RESET}"
+
+service-logs: ## Показать логи всех systemd сервисов (последние 50 строк)
+	@echo "${GREEN}Логи api-coin-app (последние 50 строк):${RESET}"
+	@echo "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	@sudo journalctl -u api-coin-app -n 50 --no-pager || echo "${RED}Логи api-coin-app не найдены${RESET}"
+	@echo ""
+	@echo "${GREEN}Логи api-coin-celery-app (последние 50 строк):${RESET}"
+	@echo "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	@sudo journalctl -u api-coin-celery-app -n 50 --no-pager || echo "${RED}Логи api-coin-celery-app не найдены${RESET}"
+
+service-logs-app: ## Показать логи api-coin-app в реальном времени
+	@echo "${GREEN}Просмотр логов api-coin-app в реальном времени (Ctrl+C для выхода):${RESET}"
+	@sudo journalctl -u api-coin-app -f
+
+service-logs-celery: ## Показать логи api-coin-celery-app в реальном времени
+	@echo "${GREEN}Просмотр логов api-coin-celery-app в реальном времени (Ctrl+C для выхода):${RESET}"
+	@sudo journalctl -u api-coin-celery-app -f
 
 ##@ Быстрые команды
 

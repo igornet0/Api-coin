@@ -1,0 +1,34 @@
+[Unit]
+Description=API Coin Celery Application (Worker + Beat)
+After=network.target postgresql.service rabbitmq-server.service redis-server.service
+Wants=postgresql.service rabbitmq-server.service redis-server.service
+
+[Service]
+Type=forking
+User=__USER__
+Group=__USER__
+WorkingDirectory=__PROJECT_DIR__/src
+Environment="PYTHONPATH=__PROJECT_DIR__/src:__PROJECT_DIR__"
+Environment="PATH=__HOME__/.local/share/pypoetry/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=api-coin-celery-app
+
+# Выводим название сервиса при запуске
+ExecStartPre=/bin/bash -c 'echo "Starting api-coin-celery-app service..."'
+
+# Запускаем Celery worker и beat в фоновом режиме
+ExecStart=/bin/bash -c 'cd __PROJECT_DIR__ && poetry run celery -A app.celery_app worker --loglevel=info --concurrency=4 --detach --pidfile=/tmp/api-coin-celery-worker.pid && poetry run celery -A app.celery_app beat --loglevel=info --detach --pidfile=/tmp/api-coin-celery-beat.pid'
+
+# Остановка процессов
+ExecStop=/bin/bash -c 'if [ -f /tmp/api-coin-celery-worker.pid ]; then kill $(cat /tmp/api-coin-celery-worker.pid) 2>/dev/null || true; rm -f /tmp/api-coin-celery-worker.pid; fi; if [ -f /tmp/api-coin-celery-beat.pid ]; then kill $(cat /tmp/api-coin-celery-beat.pid) 2>/dev/null || true; rm -f /tmp/api-coin-celery-beat.pid; fi'
+
+# Настройки для автоматического перезапуска
+StartLimitInterval=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
+

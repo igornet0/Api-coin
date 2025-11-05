@@ -1,0 +1,29 @@
+[Unit]
+Description=API Coin FastAPI Application
+After=network.target postgresql.service rabbitmq-server.service redis-server.service
+Wants=postgresql.service rabbitmq-server.service redis-server.service
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__PROJECT_DIR__/src
+Environment="PYTHONPATH=__PROJECT_DIR__/src:__PROJECT_DIR__"
+Environment="PATH=__HOME__/.local/share/pypoetry/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=api-coin-app
+
+# Выводим название сервиса при запуске
+ExecStartPre=/bin/bash -c 'echo "Starting api-coin-app service..."'
+ExecStart=/bin/bash -c 'cd __PROJECT_DIR__ && poetry run python -m uvicorn app:app --host 0.0.0.0 --port 8000'
+
+# Настройки для автоматического перезапуска
+StartLimitInterval=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
+
