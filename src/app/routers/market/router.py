@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, List, Dict, Any
 import logging
 
-from app.configuration.auth import verify_authorization
-from app.services import get_ex_service
-from app.configuration.schemas.user import KucoinApiKeyResponse
+from src.app.configuration.auth import verify_authorization
+from src.app.services import get_ex_service
+from src.app.configuration.schemas.user import KucoinApiKeyResponse
 
 router = APIRouter(prefix="/kucoin/market", tags=["kucoin_market"])
 logger = logging.getLogger(__name__)

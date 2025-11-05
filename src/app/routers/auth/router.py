@@ -7,8 +7,8 @@ from datetime import timedelta, datetime
 import secrets
 import string
 
-from core.settings import settings_app
-from core.database.orm import UserQuery
+from src.core.settings import settings_app
+from src.core.database.orm import UserQuery
 # from core.services.email_service import email_service
 
 from src.app.configuration import (Server, get_password_hash,

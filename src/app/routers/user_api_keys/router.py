@@ -4,10 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import logging
 
-from core.database.orm import UserQuery
-from core.database.models import KucoinApiKey
-from app.configuration import Server, verify_authorization
-from app.configuration.schemas.user import KucoinApiKeyCreate, KucoinApiKeyResponse
+from src.core.database.orm import UserQuery
+from src.core.database.models import KucoinApiKey
+from src.app.configuration import Server, verify_authorization
+from src.app.configuration.schemas.user import KucoinApiKeyCreate, KucoinApiKeyResponse
 
 http_bearer = HTTPBearer(auto_error=False)
 
