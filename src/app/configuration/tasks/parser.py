@@ -21,22 +21,45 @@ logger = logging.getLogger(__name__)
 import asyncio
 from datetime import datetime
 import logging
+from billiard.exceptions import SoftTimeLimitExceeded
 
 from src.app.celery_app import celery_app
 from src.handlers.att_parser import AttParser
 from src.handlers.parser_handler import Handler as HandlerParser
+from celery.signals import task_retry
 
 logger = logging.getLogger("parser_logger.tasks")
+
+# Перехватываем сигнал retry для предотвращения повторных попыток при SoftTimeLimitExceeded
+@task_retry.connect
+def on_task_retry(sender=None, task_id=None, reason=None, **kwargs):
+    """Предотвращаем retry для SoftTimeLimitExceeded"""
+    try:
+        from billiard.exceptions import SoftTimeLimitExceeded
+        if isinstance(reason, SoftTimeLimitExceeded):
+            logger.warning(f"Skipping retry for task {task_id} due to SoftTimeLimitExceeded")
+            # Возвращаем False чтобы предотвратить retry (но это не работает напрямую)
+            # Вместо этого мы обрабатываем это в except блоке
+    except Exception:
+        pass
 
 @celery_app.task(
     bind=True, 
     name="app.tasks.run_parser_task",
     max_retries=3,  # Максимальное количество попыток
     default_retry_delay=60,  # Задержка перед повтором (секунды)
-    autoretry_for=(Exception,),  # Автоматический retry для всех исключений
+    # Автоматический retry для всех исключений, кроме SoftTimeLimitExceeded
+    autoretry_for=(Exception,),
     retry_backoff=True,  # Экспоненциальная задержка между попытками
     retry_backoff_max=600,  # Максимальная задержка (10 минут)
     retry_jitter=True,  # Случайная задержка для предотвращения thundering herd
+    ignore_result=False,
+    reject_on_worker_lost=True,  # Отклоняем задачу при потере воркера
+    # Устанавливаем очень большие лимиты времени для поддержки бесконечного выполнения
+    # При manual_stop=True задача может работать бесконечно
+    # 10 лет в секундах (315360000 секунд) - достаточно для бесконечного выполнения
+    task_time_limit=315360000,  # 10 лет в секундах (для бесконечных задач)
+    task_soft_time_limit=315360000,  # 10 лет в секундах (для бесконечных задач)
 )
 def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str = "5m",
                     pause: float = 60, miss: bool = False, last_launch: bool = False,
@@ -183,18 +206,120 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
                 
                 return final_result
             
-            result = loop.run_until_complete(run_async_parser())
-            
-            return result
+            # Запускаем асинхронную функцию с таймаутом для предотвращения зависаний
+            try:
+                result = loop.run_until_complete(run_async_parser())
+                return result
+            except asyncio.CancelledError:
+                # Задача была отменена - это нормально при таймауте
+                logger.warning(f"Task {self.request.id} was cancelled")
+                raise
+        except SoftTimeLimitExceeded as timeout_error:
+            # Специальная обработка для превышения soft time limit
+            # Пропускаем обработку таймаута для задач с manual_stop=True (бесконечное выполнение)
+            if manual_stop:
+                logger.info(f"Task {self.request.id} exceeded soft time limit but continues (manual_stop=True)")
+                # Для бесконечных задач игнорируем таймаут и продолжаем работу
+                # Это может произойти если глобальные лимиты все еще установлены
+                # Но задача должна продолжать работать
+                pass
+            else:
+                error_msg = f"Task exceeded soft time limit (3300s)"
+                logger.warning(error_msg)
+                
+                # Пытаемся корректно завершить работу
+                try:
+                    # Отменяем все задачи в loop
+                    try:
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+                        
+                        # Даем время на завершение (но не слишком долго)
+                        try:
+                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    
+                    # Закрываем loop
+                    try:
+                        if not loop.is_closed():
+                            loop.close()
+                    except Exception:
+                        pass
+                except Exception as cleanup_error:
+                    logger.warning(f"Error during cleanup after timeout: {cleanup_error}")
+                
+                # Обновляем статус в БД
+                try:
+                    from src.core.database.engine import Database
+                    from src.core.settings import settings_app
+                    from src.core.database.orm import orm_update_parsing_task_status
+                    
+                    error_db_helper = Database(
+                        url=settings_app.database.get_url(),
+                        echo=settings_app.database.echo,
+                        echo_pool=settings_app.database.echo_pool,
+                        pool_size=settings_app.database.pool_size,
+                        max_overflow=settings_app.database.max_overflow
+                    )
+                    
+                    error_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(error_loop)
+                    try:
+                        async def update_timeout_status():
+                            async with error_db_helper.get_session() as session:
+                                await orm_update_parsing_task_status(
+                                    session=session,
+                                    task_id=self.request.id,
+                                    status="error",
+                                    progress_message=f"Задача превысила лимит времени выполнения",
+                                    error=error_msg,
+                                    completed_at=datetime.utcnow()
+                                )
+                            await error_db_helper.dispose()
+                        
+                        error_loop.run_until_complete(update_timeout_status())
+                    finally:
+                        error_loop.close()
+                except Exception as db_error:
+                    logger.error(f"Failed to update timeout status in DB: {db_error}")
+                
+                # Не повторяем задачу при таймауте - это бессмысленно
+                return {"status": "error", "error": error_msg, "timeout": True}
         finally:
             # Освобождаем ресурсы БД перед закрытием event loop
             try:
-                loop.run_until_complete(local_db_helper.dispose())
+                if 'local_db_helper' in locals() and local_db_helper:
+                    # Создаем новый loop для cleanup, если основной был закрыт
+                    cleanup_loop = None
+                    try:
+                        if loop.is_closed():
+                            cleanup_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(cleanup_loop)
+                            cleanup_loop.run_until_complete(local_db_helper.dispose())
+                        else:
+                            loop.run_until_complete(local_db_helper.dispose())
+                    except Exception as e:
+                        logger.warning(f"Error disposing database: {e}")
+                    finally:
+                        if cleanup_loop and not cleanup_loop.is_closed():
+                            cleanup_loop.close()
             except Exception as e:
-                logger.warning(f"Error disposing database: {e}")
+                logger.warning(f"Error in finally block: {e}")
             finally:
-                loop.close()
+                # Закрываем основной loop, если он еще не закрыт
+                if 'loop' in locals() and loop and not loop.is_closed():
+                    try:
+                        loop.close()
+                    except Exception as e:
+                        logger.warning(f"Error closing loop: {e}")
             
+    except SoftTimeLimitExceeded:
+        # Пробрасываем SoftTimeLimitExceeded наверх для специальной обработки
+        raise
     except Exception as e:
         error_msg = f"Error in parser task: {str(e)}"
         logger.error(error_msg, exc_info=True)
