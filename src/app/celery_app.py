@@ -5,7 +5,7 @@ celery_app = Celery(
     "parser_kucoin",
     broker=settings_app.rabbitmq.broker_url,
     backend=settings_app.redis.backend_url,
-    include=["app.tasks"]
+    include=["app.configuration.tasks"]
 )
 
 celery_app.conf.update(
