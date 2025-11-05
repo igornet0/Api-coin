@@ -48,5 +48,6 @@ celery_app.conf.update(
         "fanout_prefix": True,
         "fanout_patterns": True,
     },
+    
 )
 
