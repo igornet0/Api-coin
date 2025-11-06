@@ -128,13 +128,13 @@ class TaskQuery:
             include_manual_stop: Если True, включает задачи с ручной остановкой
         """
         conditions = [
-            ParsingTask.status.in_(["pending", "in_progress"]),
+            ParsingTask.status.in_(["pending", "in_progress", "error"]),
         ]
         
         if include_manual_stop:
             conditions.append(
                 and_(
-                    ParsingTask.status.in_(["pending", "in_progress"]),
+                    ParsingTask.status.in_(["pending", "in_progress", "error"]),
                     ParsingTask.manual_stop == True
                 )
             )
