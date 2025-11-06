@@ -18,12 +18,6 @@ class CoinData(BaseModel):
     min_price: float
     volume: float
 
-class CoinResponse(BaseModel):
-    id: int
-    name: str
-    price_now: float
-    price_change_percentage_24h: float
-
 
 class CoinResponseData(BaseModel):
     coin_id: int
@@ -55,7 +49,6 @@ class CoinResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class TimeseriesResponse(BaseModel):
     id: int

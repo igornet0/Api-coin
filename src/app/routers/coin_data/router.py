@@ -9,7 +9,6 @@ import logging
 from src.app.configuration.auth import verify_authorization
 from src.app.routers.market.router import get_symbols, get_ticker
 from src.core.database.orm import CoinQuery
-from src.core.database.models import Coin
 
 router = APIRouter(prefix="/coin-data", tags=["coin_data"])
 logger = logging.getLogger(__name__)

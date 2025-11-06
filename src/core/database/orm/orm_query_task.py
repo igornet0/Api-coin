@@ -104,7 +104,7 @@ class TaskQuery:
         if completed_at is not None:
             update_data["completed_at"] = completed_at
         
-        with get_db_helper().get_session() as session:
+        async with get_db_helper().get_session() as session:
             query = (
                 update(ParsingTask)
                 .where(ParsingTask.task_id == task_id)
@@ -142,7 +142,7 @@ class TaskQuery:
         async with get_db_helper().get_session() as session:
             
             query = select(ParsingTask).where(
-                ParsingTask.status.in_(["pending", "in_progress"])
+                *conditions
             ).order_by(ParsingTask.created_at.desc())
             
             result = await session.execute(query)

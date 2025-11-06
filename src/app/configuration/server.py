@@ -13,7 +13,6 @@ from typing import AsyncGenerator
 from .routers import Routers
 from src.core.settings import settings_app
 from src.core.database import get_db_helper  # only for type; do not rely on this binding at runtime
-from .lifespan import lifespan
 from .middleware.observability import ObservabilityMiddleware
 
 class Server:
@@ -26,12 +25,10 @@ class Server:
     # Must point to the OAuth2 password flow token endpoint, not a secret key
     oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login_user/")
     frontend_url = settings_app.app.frontend_url
-    lifespan = lifespan
 
     def __init__(self, app: FastAPI):
 
         self.__app = app
-        self.__app.lifespan = lifespan
         self.__register_routers(app)
         self.__regist_middleware(app)
         self.__register_static_files(app)

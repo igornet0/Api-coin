@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import HTMLResponse
 
 from .configuration.server import Server
+from .configuration.lifespan import lifespan
 
 import logging
 
@@ -57,6 +58,7 @@ def create_app(
         default_response_class=JSONResponse,
         docs_url=None if create_custom_static_urls else "/docs",
         redoc_url=None if create_custom_static_urls else "/redoc",
+        lifespan=lifespan,
     )
     # Legacy static site removed; marketing frontend is now served by React Vite
 

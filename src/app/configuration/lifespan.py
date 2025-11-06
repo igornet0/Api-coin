@@ -1,5 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from celery.result import AsyncResult
+from datetime import datetime, timedelta
+from amqp.exceptions import AccessRefused
+from kombu.exceptions import OperationalError
+
+from src.app.celery_app import celery_app
+from .tasks import run_parser_task
 
 from src.core.database import get_db_helper
 from src.core.database.orm import TaskQuery
@@ -40,12 +47,8 @@ async def restore_unfinished_tasks():
     Восстановление незавершенных задач парсинга при старте приложения
     """
     try:
-        from .celery_app import celery_app
-        from .tasks import run_parser_task
-        from celery.result import AsyncResult
-        from datetime import datetime, timedelta
 
-        db_helper = get_db_helper()
+        # db_helper = get_db_helper()
         
         unfinished_tasks = await TaskQuery.get_unfinished_parsing_tasks()
             
@@ -70,10 +73,20 @@ async def restore_unfinished_tasks():
                     continue
                 
                 # Проверяем, существует ли задача в Celery
-                celery_task_result = AsyncResult(task.task_id, app=celery_app)
+                try:
+                    celery_task_result = AsyncResult(task.task_id, app=celery_app)
+                    task_state = celery_task_result.state
+                except (AccessRefused, OperationalError) as e:
+                    logger.warning(
+                        f"Cannot check Celery task status for {task.task_id}: RabbitMQ connection error. "
+                        f"Will attempt to restore task. Error: {e}"
+                    )
+                    # Если не можем проверить статус, считаем что задача требует восстановления
+                    task_state = "UNKNOWN"
+                    celery_task_result = None
                 
                 # Если задача уже завершена в Celery, обновляем статус в БД
-                if celery_task_result.state == "SUCCESS":
+                if task_state == "SUCCESS":
                     await TaskQuery.update_parsing_task_status(
                         task_id=task.task_id,
                         status="completed",
@@ -84,9 +97,8 @@ async def restore_unfinished_tasks():
                     logger.info(f"Task {task.task_id} was completed, updated status in DB")
                     continue
                 
-                elif celery_task_result.state == "FAILURE":
-
-                    error_info = celery_task_result.info
+                elif task_state == "FAILURE":
+                    error_info = celery_task_result.info if celery_task_result else None
                     error_msg = str(error_info) if error_info else "Task failed"
                     await TaskQuery.update_parsing_task_status(
                         task_id=task.task_id,
@@ -100,27 +112,42 @@ async def restore_unfinished_tasks():
                 
                 # Если задача в PENDING или не существует, перезапускаем её
                 # Особенно важно для задач с ручной остановкой (manual_stop=True)
-                task_state = celery_task_result.state
                 if task_state is None:
                     task_state = "UNKNOWN"
                 
                 if task.manual_stop or task_state in ("PENDING", "UNKNOWN"):
                     logger.info(f"Restoring task {task.task_id} (parser_type={task.parser_type}, manual_stop={task.manual_stop}, celery_state={task_state})")
                     
-                    # Перезапускаем задачу с теми же параметрами
-                    new_celery_task = run_parser_task.delay(
-                        parser_type=task.parser_type,
-                        count=task.count,
-                        time_parser=task.time_parser,
-                        pause=task.pause,
-                        miss=task.miss,
-                        last_launch=task.last_launch,
-                        clear=task.clear,
-                        save=task.save,
-                        save_type=task.save_type,
-                        coins=task.coins,
-                        manual_stop=task.manual_stop
-                    )
+                    try:
+                        # Перезапускаем задачу с теми же параметрами
+                        new_celery_task = run_parser_task.delay(
+                            parser_type=task.parser_type,
+                            count=task.count,
+                            time_parser=task.time_parser,
+                            pause=task.pause,
+                            miss=task.miss,
+                            last_launch=task.last_launch,
+                            clear=task.clear,
+                            save=task.save,
+                            save_type=task.save_type,
+                            coins=task.coins,
+                            manual_stop=task.manual_stop
+                        )
+                    except (AccessRefused, OperationalError) as e:
+                        logger.error(
+                            f"Failed to restore task {task.task_id}: RabbitMQ connection error. "
+                            f"Please check RabbitMQ is running and credentials are correct. Error: {e}"
+                        )
+                        # Помечаем задачу как требующую ручного восстановления
+                        await TaskQuery.update_parsing_task_status(
+                            task_id=task.task_id,
+                            status="error",
+                            progress_message=f"Не удалось восстановить задачу: ошибка подключения к RabbitMQ. "
+                                            f"Проверьте, что RabbitMQ запущен и учетные данные корректны.",
+                            error=str(e),
+                            completed_at=datetime.utcnow()
+                        )
+                        continue
                     
                     # Помечаем старую задачу как восстановленную
                     await TaskQuery.update_parsing_task_status(

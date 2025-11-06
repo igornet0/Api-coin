@@ -82,10 +82,14 @@ class CoinQuery:
             return result.scalars().all()
 
     @staticmethod
-    async def get_coins() -> List[Coin]:
+    async def get_coins(parsed: bool = None) -> List[Coin]:
         """Получить все монеты"""
         async with get_db_helper().get_session() as session:
-            query = select(Coin).where(Coin.parsed == True)
+
+            query = select(Coin)
+            if parsed:
+                query = query.where(Coin.parsed == parsed)
+                
             result = await session.execute(query)
             return result.scalars().all()
 

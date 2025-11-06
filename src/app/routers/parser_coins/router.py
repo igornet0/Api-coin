@@ -7,17 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.app.configuration import Server
 from src.app.configuration.schemas import CoinResponse, TimeseriesResponse, DataTimeseriesResponse, CoinCreateRequest, CoinsUploadResponse
 from src.core.database.orm import CoinQuery
-# ,
-#     orm_get_coins,
-#     orm_get_coin_by_name,
-#     orm_get_timeseries_by_coin,
-#     orm_get_data_timeseries,
-#     orm_add_coin,
-#     orm_get_all_data_timeseries_by_coin,
-# )
 
 router = APIRouter(prefix="/coins", tags=["coins"])
-
 
 @router.get("/", response_model=List[CoinResponse])
 async def get_coins(
@@ -25,7 +16,7 @@ async def get_coins(
     """
     Получить список всех монет
     """
-    coins = await CoinQuery.get_coins()
+    coins = await CoinQuery.get_coins(parsed)
     if not coins:
         raise HTTPException(status_code=404, detail="No coins found")
     

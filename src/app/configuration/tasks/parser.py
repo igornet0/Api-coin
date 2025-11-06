@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import update
+from billiard.exceptions import SoftTimeLimitExceeded
 import json
 
 logger = logging.getLogger(__name__)
@@ -11,12 +12,6 @@ logger = logging.getLogger(__name__)
 # from backend.MMM import AgentManager  # Temporarily disabled for testing
 # from Dataset import LoaderTimeLine, DatasetTimeseries  # Temporarily disabled for testing
 # from train_models import Loader as TrainLoader  # Temporarily disabled for testing
-
-
-import asyncio
-from datetime import datetime
-import logging
-from billiard.exceptions import SoftTimeLimitExceeded
 
 from src.app.celery_app import celery_app
 from src.handlers.att_parser import AttParser
@@ -95,7 +90,7 @@ def run_parser_task(self, parser_type: str, count: int = 100, time_parser: str =
         
         # Создаем новый экземпляр Database в контексте нового event loop
         # from src.core.database.engine import Database
-        from src.core.settings import settings_app
+        # from src.core.settings import settings_app
 
         # local_db_helper = Database(
         #     url=settings_app.database.get_url(),
